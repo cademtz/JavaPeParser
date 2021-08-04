@@ -3,9 +3,28 @@ package com.company;
 import java.io.IOException;
 
 public class ImageOptionalHeader {
-    public final long IMAGE_NT_OPTIONAL_HDR32_MAGIC = 0x10b;
-    public final long IMAGE_NT_OPTIONAL_HDR64_MAGIC = 0x20b;
-    public final int IMAGE_NUMBEROF_DIRECTORY_ENTRIES = 16;
+    public static final long IMAGE_NT_OPTIONAL_HDR32_MAGIC = 0x10b;
+    public static final long IMAGE_NT_OPTIONAL_HDR64_MAGIC = 0x20b;
+    public static final int IMAGE_NUMBEROF_DIRECTORY_ENTRIES = 16;
+
+    // Directory Entries
+
+    public static final int IMAGE_DIRECTORY_ENTRY_EXPORT =         0;    // Export Directory
+    public static final int IMAGE_DIRECTORY_ENTRY_IMPORT =         1;    // Import Directory
+    public static final int IMAGE_DIRECTORY_ENTRY_RESOURCE =       2;    // Resource Directory
+    public static final int IMAGE_DIRECTORY_ENTRY_EXCEPTION =      3;    // Exception Directory
+    public static final int IMAGE_DIRECTORY_ENTRY_SECURITY =       4;    // Security Directory
+    public static final int IMAGE_DIRECTORY_ENTRY_BASERELOC =      5;    // Base Relocation Table
+    public static final int IMAGE_DIRECTORY_ENTRY_DEBUG =          6;    // Debug Directory
+    //IMAGE_DIRECTORY_ENTRY_COPYRIGHT       7   // (X86 usage)
+    public static final int IMAGE_DIRECTORY_ENTRY_ARCHITECTURE =   7;    // Architecture Specific Data
+    public static final int IMAGE_DIRECTORY_ENTRY_GLOBALPTR =      8;    // RVA of GP
+    public static final int IMAGE_DIRECTORY_ENTRY_TLS =            9;    // TLS Directory
+    public static final int IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG =    10;   // Load Configuration Directory
+    public static final int IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT =   11;   // Bound Import Directory in headers
+    public static final int IMAGE_DIRECTORY_ENTRY_IAT =            12;   // Import Address Table
+    public static final int IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT =   13;   // Delay Load Import Descriptors
+    public static final int IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR = 14;   // COM Runtime descriptor
 
     public int magic;
     public int majorLinkerVersion; // byte
@@ -38,15 +57,14 @@ public class ImageOptionalHeader {
     public long loaderFlags;
     public long numberOfRvaAndSizes;
 
-    ImageDataDirectory[] dataDirectory = new ImageDataDirectory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES];
+    public ImageDataDirectory[] dataDirectory = new ImageDataDirectory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES];
 
-    static ImageOptionalHeader read(LittleEndianReader r)
+    public static ImageOptionalHeader read(LittleEndianReader r)
     {
         boolean is64bit;
         ImageOptionalHeader hdr = new ImageOptionalHeader();
 
         try {
-            System.out.println("Reading NtOptional magic at off " + r.getStream().getPos());
             hdr.magic = r.readWord();
             is64bit = hdr.is64bit();
 
@@ -58,7 +76,7 @@ public class ImageOptionalHeader {
             hdr.addressOfEntryPoint = r.readDword();
             hdr.baseOfCode = r.readDword();
             if (!is64bit)
-                hdr.baseOfData = r.readWord();
+                hdr.baseOfData = r.readDword();
             hdr.imageBase = r.readNative(is64bit);
             hdr.sectionAlignment = r.readDword();
             hdr.fileAlignment = r.readDword();
@@ -95,5 +113,5 @@ public class ImageOptionalHeader {
         return hdr;
     }
 
-    boolean is64bit() { return magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC; }
+    public boolean is64bit() { return magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC; }
 }

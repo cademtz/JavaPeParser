@@ -6,7 +6,7 @@ public class ImageDataDirectory {
     public long virtualAddress;
     public long size;
 
-    static ImageDataDirectory read(LittleEndianReader r)
+    public static ImageDataDirectory read(LittleEndianReader r)
     {
         ImageDataDirectory dir = new ImageDataDirectory();
 

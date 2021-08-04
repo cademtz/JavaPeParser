@@ -5,9 +5,9 @@ import java.io.IOException;
 public class ImageSectionHeader {
     public static final int IMAGE_SIZEOF_SHORT_NAME = 8;
 
-    String name;
-    long physicalAddr_vSize; // union
-    public long virtualAddress;
+    private  String name;
+    private long physicalAddr_vSize; // union
+    public long virtualAddress; // Relative virtual address
     public long sizeOfRawData;
     public long pointerToRawData;
     public long pointerToRelocations;
@@ -16,7 +16,7 @@ public class ImageSectionHeader {
     public int numberOfLinenumbers;
     public long characteristics;
 
-    static ImageSectionHeader read(LittleEndianReader r)
+    public static ImageSectionHeader read(LittleEndianReader r)
     {
         ImageSectionHeader hdr = new ImageSectionHeader();
 
@@ -37,8 +37,8 @@ public class ImageSectionHeader {
         return hdr;
     }
 
-    String getName() { return name; }
-    void setName(String Name) {
+    public String getName() { return name; }
+    public void setName(String Name) {
         name = Name.substring(0, IMAGE_SIZEOF_SHORT_NAME);
     }
 

@@ -1,35 +1,39 @@
 package com.company;
 
-import java.io.IOException;
+import java.io.FileNotFoundException;
 
 public class Main {
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws FileNotFoundException {
 
-        /*byte bytes[] = { 0x12, 0x34, (byte) 0xAB, (byte) 0xCD};
-
-        EndianReader r = new BigEndianReader(new BufferReader(bytes));
-        System.out.println("Sample Dword");
-        System.out.println(HexOutput.dwordToString(r.readDword()));*/
-
-        CadesFileStream file = new CadesFileStream("C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe");
+        //CadesFileStream file = new CadesFileStream("C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe");
+        CadesFileStream file = new CadesFileStream("C:\\Program Files (x86)\\Steam\\steam.exe");
         LittleEndianReader r = new LittleEndianReader(file);
-        /*ImageDosHeader dos = ImageDosHeader.read(r);
-
-        if (dos == null)
-        {
-            System.out.println("Couldn't parse DOS header");
-            return;
-        }
-
-        System.out.println("lfanew: " + HexOutput.dwordToString(dos.lfanew));
-
-        // Parse NT header
-
-        r.getStream().seek(dos.lfanew);
-        ImageNtHeaders nt = ImageNtHeaders.read(r);*/
 
         ImagePeHeaders pe = ImagePeHeaders.read(r);
+        ImageDataDirectory imp = pe.getDataDirectory(ImageOptionalHeader.IMAGE_DIRECTORY_ENTRY_IMPORT);
+
+        System.out.println("Import directory RVA: 0x" + HexOutput.dwordToString(imp.virtualAddress));
+        System.out.println("Import directory Size: 0x" + HexOutput.dwordToString(imp.size));
+
+        System.out.println(pe.importDescriptors.size() + " Import tables");
+
+        for (int i = 0; i < pe.getNumCachedImports(); ++i)
+        {
+            CachedLibraryImports lib = pe.getCachedLibraryImport(i);
+            System.out.println(lib.getName());
+
+            for (int c = 0; c < lib.getNumEntries(); c++)
+            {
+                CachedImportEntry entry = lib.getEntry(c);
+                System.out.print('\t');
+
+                if (entry.getName() != null)
+                    System.out.println("Name: " + entry.getName());
+                else
+                    System.out.println("Ordinal: " + entry.getOrdinal());
+            }
+        }
 
         System.out.println("I survived!!");
     }

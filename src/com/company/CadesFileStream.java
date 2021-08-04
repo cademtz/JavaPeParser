@@ -16,26 +16,23 @@ public class CadesFileStream extends CadesStreamReader {
     }
 
     @Override
-    int read() throws IOException {
+    public int read() throws IOException {
         ++pos;
         return stream.read() & 0xFF;
     }
 
     @Override
-    void seek(long pos) throws IOException {
-        stream.seek(pos);
-        this.pos = pos;
+    public void seek(long pos) throws IOException {
+        stream.seek( this.pos = pos );
     }
 
     @Override
-    void seekEnd() throws IOException {
-        pos = stream.length() - 1;
-        stream.seek(pos);
+    public void seekEnd() throws IOException {
+        stream.seek( pos = stream.length() );
     }
 
     @Override
-    void seekStart() throws IOException {
-        pos = 0;
-        stream.seek(pos);
+    public void seekStart() throws IOException {
+        stream.seek( pos = 0 );
     }
 }

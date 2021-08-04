@@ -11,7 +11,7 @@ public class ImageFileHeader {
     public int sizeOfOptionalHeader;
     public int characteristics;
 
-    static ImageFileHeader read(LittleEndianReader r)
+    public static ImageFileHeader read(LittleEndianReader r)
     {
         ImageFileHeader hdr = new ImageFileHeader();
 

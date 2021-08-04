@@ -3,13 +3,13 @@ package com.company;
 import java.io.IOException;
 
 public class ImageNtHeaders {
-    public final long IMAGE_NT_SIGNATURE = 0x00004550;
+    public static final long IMAGE_NT_SIGNATURE = 0x00004550;
 
-    long signature;
-    ImageFileHeader fileHeader;
-    ImageOptionalHeader optionalHeader;
+    public long signature;
+    public ImageFileHeader fileHeader;
+    public ImageOptionalHeader optionalHeader;
 
-    static ImageNtHeaders read(LittleEndianReader r)
+    public static ImageNtHeaders read(LittleEndianReader r)
     {
         ImageNtHeaders nt = new ImageNtHeaders();
 
@@ -27,5 +27,6 @@ public class ImageNtHeaders {
         return nt;
     }
 
-    boolean is64bit() { return optionalHeader.is64bit(); }
+    public boolean is64bit() { return optionalHeader.is64bit(); }
+    public ImageDataDirectory getDataDirectory(int index) { return optionalHeader.dataDirectory[index]; }
 }

@@ -8,10 +8,10 @@ import java.io.IOException;
 public abstract class CadesStreamReader {
     protected long pos;
 
-    long getPos() { return pos; }
+    public long getPos() { return pos; }
 
-    abstract int read() throws IOException;
-    abstract void seek(long pos) throws IOException;
-    abstract void seekEnd() throws IOException;
-    abstract void seekStart() throws IOException;
+    public abstract int read() throws IOException;
+    public abstract void seek(long pos) throws IOException;
+    public abstract void seekEnd() throws IOException;
+    public abstract void seekStart() throws IOException;
 }

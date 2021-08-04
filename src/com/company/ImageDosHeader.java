@@ -3,6 +3,8 @@ package com.company;
 import java.io.IOException;
 
 public class ImageDosHeader {
+    public static final int IMAGE_DOS_SIGNATURE = 0x5A4D;
+
     public int magic;
     public int cblp;
     public int cp;
@@ -23,7 +25,7 @@ public class ImageDosHeader {
     public int[] res2 = new int[10];
     public long lfanew;
 
-    static ImageDosHeader read(LittleEndianReader r)
+    public static ImageDosHeader read(LittleEndianReader r)
     {
         ImageDosHeader hdr = new ImageDosHeader();
         try {

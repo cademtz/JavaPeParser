@@ -3,9 +3,9 @@ package com.company;
 import java.io.IOException;
 
 public class CadesBufferStream extends CadesStreamReader {
-    byte[] bytes;
-    int offset;
-    int count;
+    private byte[] bytes;
+    private int offset;
+    private int count;
 
     public CadesBufferStream(byte[] Bytes)
     {
@@ -28,22 +28,22 @@ public class CadesBufferStream extends CadesStreamReader {
     }
 
     @Override
-    int read() throws IOException {
+    public int read() throws IOException {
         if (pos < 0 || pos >= count)
             throw new IOException();
         return bytes[(int)(pos++ + offset)] & 0xFF;
     }
 
     @Override
-    void seek(long pos) throws IOException {
-        if (pos < 0 || pos >= count)
+    public void seek(long pos) throws IOException {
+        if (pos < 0 || pos > count)
             throw new IOException();
         this.pos = pos;
     }
 
     @Override
-    void seekEnd() { pos = count - 1; }
+    public void seekEnd() { pos = count; }
 
     @Override
-    void seekStart() { pos = 0; }
+    public void seekStart() { pos = 0; }
 }
