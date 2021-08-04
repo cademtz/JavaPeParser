@@ -16,6 +16,9 @@ public class ImageNtHeaders {
         try { nt.signature = r.readDword(); }
         catch (IOException e) { return null; }
 
+        if (nt.signature != IMAGE_NT_SIGNATURE)
+            return null; // Invalid header
+
         nt.fileHeader = ImageFileHeader.read(r);
         if (nt.fileHeader == null)
             return null;

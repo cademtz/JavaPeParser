@@ -30,6 +30,10 @@ public class ImageDosHeader {
         ImageDosHeader hdr = new ImageDosHeader();
         try {
             hdr.magic = r.readWord();
+
+            if (hdr.magic != IMAGE_DOS_SIGNATURE)
+                return null; // Invalid header
+
             hdr.cblp = r.readWord();
             hdr.cp = r.readWord();
             hdr.crlc = r.readWord();

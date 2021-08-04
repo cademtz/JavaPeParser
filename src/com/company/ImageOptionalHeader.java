@@ -66,6 +66,10 @@ public class ImageOptionalHeader {
 
         try {
             hdr.magic = r.readWord();
+            if (hdr.magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC &&
+                    hdr.magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC)
+                return null; // Invalid header
+
             is64bit = hdr.is64bit();
 
             hdr.majorLinkerVersion = r.readByte();
