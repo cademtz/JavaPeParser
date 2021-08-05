@@ -16,22 +16,42 @@ public class Main {
         System.out.println("Import directory RVA: 0x" + HexOutput.dwordToString(imp.virtualAddress));
         System.out.println("Import directory Size: 0x" + HexOutput.dwordToString(imp.size));
 
-        System.out.println(pe.importDescriptors.size() + " Import tables");
+        // Warning: ALWAYS null check the import and export directories, as directories are OPTIONAL in the PE format.
 
-        for (int i = 0; i < pe.getNumCachedImports(); ++i)
+        // Print all imported libraries and name(s) included from them
+        if (pe.importDescriptors != null)
         {
-            CachedLibraryImports lib = pe.getCachedLibraryImport(i);
-            System.out.println(lib.getName());
+            System.out.println(pe.importDescriptors.size() + " Import tables");
 
-            for (int c = 0; c < lib.getNumEntries(); c++)
+            for (int i = 0; i < pe.getNumCachedImports(); ++i)
             {
-                CachedImportEntry entry = lib.getEntry(c);
-                System.out.print('\t');
+                CachedLibraryImports lib = pe.getCachedLibraryImport(i);
+                System.out.println(lib.getName());
 
-                if (entry.getName() != null)
-                    System.out.println("Name: " + entry.getName());
-                else
-                    System.out.println("Ordinal: " + entry.getOrdinal());
+                for (int c = 0; c < lib.getNumEntries(); c++)
+                {
+                    CachedImportEntry entry = lib.getEntry(c);
+                    System.out.print('\t');
+
+                    if (entry.getName() != null)
+                        System.out.println("Name: " + entry.getName());
+                    else
+                        System.out.println("Ordinal: " + entry.getOrdinal());
+                }
+            }
+        }
+
+        // Print all name(s) exported
+        if (pe.exportDirectory != null)
+        {
+            System.out.println(pe.exportDirectory.numberOfNames + " exports");
+
+            for (int i = 0; i < pe.getCachedExports().getNumEntries(); ++i)
+            {
+                CachedExportEntry entry = pe.getCachedExports().getEntry(i);
+                System.out.print("\tRVA: " +
+                        HexOutput.dwordToString(entry.getAddress() - pe.ntHeader.optionalHeader.imageBase));
+                System.out.println(" Ordinal: " + entry.getOrdinal() + ", Name: " + entry.getName());
             }
         }
 

@@ -49,10 +49,9 @@ public abstract class EndianReader {
 
     /**
      * Reads a terminated (usually null-terminated) array of values in to an ArrayList
-     * @param bits Size of one array element in bits. Rounded to the nearest int type (byte, word, dword, qword)
+     * @param bits Size of one array element in bits. Rounded up to the nearest int type (byte, word, dword, qword)
      * @param term Value signifying the end of an array. Typically 0 (null-terminated)
      * @param maxLength Maxmium number of values before the array is considered invalid
-     * @param <T>
      * @return The resulting ArrayList, or null
      * @throws IOException
      */
@@ -82,6 +81,32 @@ public abstract class EndianReader {
         if (i > maxLength)
             return null;
         return list;
+    }
+
+    /**
+     * Reads an array of values
+     * @param bits Size of one array element in bits. Rounded up to the nearest int type (byte, word, dword, qword)
+     * @param count Number of values to read
+     * @return The resulting array, or null
+     * @throws IOException
+     */
+    public long[] readValues(int bits, int count) throws IOException
+    {
+        long[] arr = new long[count];
+
+        for (int i = 0; i < count; ++i)
+        {
+            long val;
+
+            if (bits < 16) val = readByte();
+            else if (bits < 32) val = readWord();
+            else if (bits < 64) val = readDword();
+            else val = readQword();
+
+            arr[i] = val;
+        }
+
+        return arr;
     }
 
     public abstract int readWord() throws IOException;

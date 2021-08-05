@@ -12,7 +12,9 @@ public class ImagePeHeaders {
      * Empty ArrayList means import table is unused or empty.
      */
     public ArrayList<ImageImportDescriptor> importDescriptors;
+    public ImageExportDirectory exportDirectory;
     private ArrayList<CachedLibraryImports> cachedImps;
+    private CachedImageExports cachedExps;
 
     public static ImagePeHeaders read(LittleEndianReader r) {
         CadesVirtualMemStream vmem;
@@ -38,14 +40,14 @@ public class ImagePeHeaders {
 
         vmem = pe.makeVirtualMemStream(r.getStream());
         pe.updateImports(vmem);
+        pe.updateExports(vmem);
 
         return pe;
     }
 
     public boolean is64bit() { return ntHeader.is64bit(); }
-
     public ImageDataDirectory getDataDirectory(int index) { return ntHeader.getDataDirectory(index); }
-
+    public CachedImageExports getCachedExports() { return cachedExps; }
     public int getNumCachedImports() { return cachedImps.size(); }
     public CachedLibraryImports getCachedLibraryImport(int index) { return cachedImps.get(index); }
 
@@ -93,6 +95,33 @@ public class ImagePeHeaders {
         catch (IOException e) {
             importDescriptors = null;
             cachedImps = null;
+        }
+    }
+
+    public void updateExports(CadesVirtualMemStream vmem)
+    {
+        long baseVaddr = ntHeader.optionalHeader.imageBase;
+        LittleEndianReader r = new LittleEndianReader(vmem);
+        ImageDataDirectory exp = getDataDirectory(ImageOptionalHeader.IMAGE_DIRECTORY_ENTRY_EXPORT);
+
+        exportDirectory = null;
+        cachedExps = null;
+
+        if (exp == null || exp.virtualAddress == 0)
+            return;
+
+        try {
+            r.getStream().seek(exp.virtualAddress + baseVaddr);
+            exportDirectory = ImageExportDirectory.read(r);
+
+            if (exportDirectory == null)
+                return;
+
+            updateExportCache(r);
+        }
+        catch (IOException e) {
+            exportDirectory = null;
+            cachedExps = null;
         }
     }
 
@@ -157,5 +186,49 @@ public class ImagePeHeaders {
 
             cachedImps.add(new CachedLibraryImports(name, desc.timeDateStamp, desc.forwarderChain, entries));
         }
+    }
+
+    private void updateExportCache(LittleEndianReader r) throws IOException {
+        String name;
+        long[] funcsTable;
+        long[] namesTable;
+        long[] ordsTable;
+        CachedExportEntry[] entries;
+        long baseVaddr = ntHeader.optionalHeader.imageBase;
+
+        r.getStream().seek(exportDirectory.name + baseVaddr);
+        name = r.readNullTerminatedString(-1);
+
+        r.getStream().seek(exportDirectory.addressOfFunctions + baseVaddr);
+        funcsTable = r.readValues(32, (int)exportDirectory.numberOfFunctions);
+
+        r.getStream().seek(exportDirectory.addressOfNames + baseVaddr);
+        namesTable = r.readValues(32, (int)exportDirectory.numberOfNames);
+
+        r.getStream().seek(exportDirectory.addressOfNameOrdinals + baseVaddr);
+        ordsTable = r.readValues(16, (int)exportDirectory.numberOfNames);
+
+        entries = new CachedExportEntry[namesTable.length];
+        for (int i = 0; i < (int)exportDirectory.numberOfNames; ++i)
+        {
+            int entryOrd;
+            long entryVa;
+            String entryName;
+
+            try {
+                entryOrd = (int) ordsTable[i];
+                entryVa = funcsTable[entryOrd] + baseVaddr;
+
+                r.getStream().seek(namesTable[i] + baseVaddr);
+                entryName = r.readNullTerminatedString(-1);
+            }
+            catch (IndexOutOfBoundsException e) { // wholesome 100
+                throw new IOException("Bad export ordinal to name or function table");
+            }
+
+            entries[i] = new CachedExportEntry(entryName, entryOrd, entryVa);
+        }
+
+        cachedExps = new CachedImageExports(name, entries);
     }
 }
