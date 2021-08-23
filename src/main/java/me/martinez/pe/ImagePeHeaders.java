@@ -38,6 +38,7 @@ public class ImagePeHeaders {
 			for (int i = 0; i < pe.sectionHeaders.length; ++i)
 				pe.sectionHeaders[i] = ImageSectionHeader.read(r);
 		} catch (IOException e) {
+			// TODO: Error handling
 			return null;
 		}
 		vmem = pe.makeVirtualMemStream(r.getStream());
