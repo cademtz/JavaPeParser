@@ -1,5 +1,7 @@
 package com.company;
 
+import com.company.io.LittleEndianReader;
+
 import java.io.IOException;
 
 public class ImageSectionHeader {

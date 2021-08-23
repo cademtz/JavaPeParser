@@ -1,17 +1,25 @@
 package com.company;
 
 public class CachedExportEntry {
-    private String name;
-    private int ordinal;
-    private long address; // Pointer being exported
+	private final String name;
+	private final int ordinal;
+	private final long address; // Pointer being exported
 
-    public CachedExportEntry(String Name, int Ordinal, long Address) {
-        name = Name;
-        ordinal = Ordinal;
-        address = Address;
-    }
+	public CachedExportEntry(String name, int ordinal, long address) {
+		this.name = name;
+		this.ordinal = ordinal;
+		this.address = address;
+	}
 
-    public String getName() { return name; }
-    public int getOrdinal() { return ordinal; }
-    public long getAddress() { return address; }
+	public String getName() {
+		return name;
+	}
+
+	public int getOrdinal() {
+		return ordinal;
+	}
+
+	public long getAddress() {
+		return address;
+	}
 }

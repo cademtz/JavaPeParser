@@ -1,21 +1,26 @@
 package com.company;
 
+import com.company.io.LittleEndianReader;
+
 import java.io.IOException;
 
 public class ImageDataDirectory {
-    public long virtualAddress;
-    public long size;
+	public final long virtualAddress;
+	public final long size;
 
-    public static ImageDataDirectory read(LittleEndianReader r)
-    {
-        ImageDataDirectory dir = new ImageDataDirectory();
+	private ImageDataDirectory(long virtualAddress, long size) {
+		this.virtualAddress = virtualAddress;
+		this.size = size;
+	}
 
-        try {
-            dir.virtualAddress = r.readDword();
-            dir.size = r.readDword();
-        }
-        catch (IOException e) { return null; }
-
-        return dir;
-    }
+	public static ImageDataDirectory read(LittleEndianReader r) {
+		try {
+			long virtualAddress = r.readDword();
+			long size = r.readDword();
+			return new ImageDataDirectory(virtualAddress, size);
+		} catch (IOException e) {
+		    // TODO: Error handling
+			return null;
+		}
+	}
 }

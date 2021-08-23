@@ -1,15 +1,23 @@
 package com.company;
 
 public class CachedImageExports {
-    private String name;
-    private CachedExportEntry[] entries;
+	private final String name;
+	private final CachedExportEntry[] entries;
 
-    public CachedImageExports(String Name, CachedExportEntry[] Entries) {
-        name = Name;
-        entries = Entries;
-    }
+	public CachedImageExports(String name, CachedExportEntry[] entries) {
+		this.name = name;
+		this.entries = entries;
+	}
 
-    public String getName() { return name; }
-    public int getNumEntries() { return entries.length; }
-    public CachedExportEntry getEntry(int index) { return entries[index]; }
+	public String getName() {
+		return name;
+	}
+
+	public int getNumEntries() {
+		return entries.length;
+	}
+
+	public CachedExportEntry getEntry(int index) {
+		return entries[index];
+	}
 }
