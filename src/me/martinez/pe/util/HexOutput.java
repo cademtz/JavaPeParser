@@ -1,4 +1,4 @@
-package com.company.util;
+package me.martinez.pe.util;
 
 public class HexOutput {
 	private static String bitsToString(long value, int bitCount) {

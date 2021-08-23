@@ -1,7 +1,7 @@
-package com.company.io;
+package me.martinez.pe.io;
 
-import com.company.ImagePeHeaders;
-import com.company.ImageSectionHeader;
+import me.martinez.pe.ImagePeHeaders;
+import me.martinez.pe.ImageSectionHeader;
 
 import java.io.IOException;
 
