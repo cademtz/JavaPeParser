@@ -15,7 +15,7 @@ public abstract class CadesStreamReader {
 	}
 
 	public long incrementPos(long offset) {
-		return (pos += offset);
+		return (pos += offset) - offset;
 	}
 
 	public long getPos() {
