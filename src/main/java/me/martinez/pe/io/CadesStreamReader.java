@@ -10,14 +10,6 @@ import java.io.IOException;
 public abstract class CadesStreamReader {
 	private long pos;
 
-	public void setPos(long pos) {
-		this.pos = pos;
-	}
-
-	public long incrementPos(long offset) {
-		return (pos += offset) - offset;
-	}
-
 	public long getPos() {
 		return pos;
 	}
@@ -29,4 +21,12 @@ public abstract class CadesStreamReader {
 	public abstract void seekEnd() throws IOException;
 
 	public abstract void seekStart() throws IOException;
+
+	protected void setPos(long pos) {
+		this.pos = pos;
+	}
+
+	protected long incrementPos(long offset) {
+		return (pos += offset) - offset;
+	}
 }
