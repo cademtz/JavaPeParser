@@ -2,12 +2,15 @@ package me.martinez.pe;
 
 public class CachedImportEntry {
 	private final String name;
-	private final Integer ordinal;
+	private final int ordinal;
 	private final long address; // Virtual address where imported pointer will be saved
 
 	public CachedImportEntry(String name, Integer ordinal, long address) {
+		if (ordinal != null)
+			this.ordinal = ordinal;
+		else
+			this.ordinal = 0;
 		this.name = name;
-		this.ordinal = ordinal;
 		this.address = address;
 	}
 
@@ -15,7 +18,7 @@ public class CachedImportEntry {
 	 * @return Import by ordinal <i>(16-bit integer (word))</i>.
 	 * May be {@code null} if no ordinal was used.
 	 */
-	public Integer getOrdinal() {
+	public int getOrdinal() {
 		return ordinal;
 	}
 
