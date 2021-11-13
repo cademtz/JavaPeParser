@@ -9,7 +9,7 @@ public class CachedImportEntry {
 		if (ordinal != null)
 			this.ordinal = ordinal;
 		else
-			this.ordinal = 0;
+			this.ordinal = -1;
 		this.name = name;
 		this.address = address;
 	}
