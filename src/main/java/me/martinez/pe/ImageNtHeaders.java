@@ -1,39 +1,43 @@
 package me.martinez.pe;
 
 import me.martinez.pe.io.LittleEndianReader;
+import me.martinez.pe.util.GenericError;
+import me.martinez.pe.util.ParseResult;
 
 import java.io.IOException;
 
 public class ImageNtHeaders {
-	public static final long IMAGE_NT_SIGNATURE = 0x00004550;
-	public long signature;
-	public ImageFileHeader fileHeader;
-	public ImageOptionalHeader optionalHeader;
+    public static final long IMAGE_NT_SIGNATURE = 0x00004550;
+    public long signature;
+    public ImageFileHeader fileHeader;
+    public ImageOptionalHeader optionalHeader;
 
-	public static ImageNtHeaders read(LittleEndianReader r) {
-		ImageNtHeaders nt = new ImageNtHeaders();
-		try {
-			nt.signature = r.readDword();
-		} catch (IOException e) {
-			// TODO: Error handling
-			return null;
-		}
-		if (nt.signature != IMAGE_NT_SIGNATURE)
-			return null; // Invalid header
-		nt.fileHeader = ImageFileHeader.read(r);
-		if (nt.fileHeader == null)
-			return null;
-		nt.optionalHeader = ImageOptionalHeader.read(r);
-		if (nt.optionalHeader == null)
-			return null;
-		return nt;
-	}
+    public static ParseResult<ImageNtHeaders> read(LittleEndianReader r) {
+        ImageNtHeaders nt = new ImageNtHeaders();
+        try {
+            nt.signature = r.readDword();
+        } catch (IOException e) {
+            return ParseResult.err("IOException, cannot read NT signature", e);
+        }
+        if (nt.signature != IMAGE_NT_SIGNATURE)
+            return ParseResult.err("Invalid NT header signature");
 
-	public boolean is64bit() {
-		return optionalHeader.is64bit();
-	}
+        GenericError err = ImageFileHeader.read(r).ifOk(hdr -> nt.fileHeader = hdr).getErrOrDefault(null);
+        if (err != null)
+            return ParseResult.err(err);
 
-	public ImageDataDirectory getDataDirectory(int index) {
-		return optionalHeader.dataDirectory[index];
-	}
+        err = ImageOptionalHeader.read(r).ifOk(hdr -> nt.optionalHeader = hdr).getErrOrDefault(null);
+        if (err != null)
+            return ParseResult.err(err);
+
+        return ParseResult.ok(nt);
+    }
+
+    public boolean is64bit() {
+        return optionalHeader.is64bit();
+    }
+
+    public ImageDataDirectory getDataDirectory(int index) {
+        return optionalHeader.dataDirectory[index];
+    }
 }

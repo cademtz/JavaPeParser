@@ -1,81 +1,67 @@
 package me.martinez.pe;
 
 import me.martinez.pe.io.LittleEndianReader;
+import me.martinez.pe.util.ParseResult;
 
 import java.io.IOException;
 
 public class ImageImportByName {
-	public static final long IMAGE_ORDINAL_FLAG64 = (long) 1 << 63; // 0x8000000000000000, but java dumb lol
-	public static final int IMAGE_ORDINAL_FLAG32 = 0x80000000;
+    public static final long IMAGE_ORDINAL_FLAG64 = (long) 1 << 63; // 0x8000000000000000, but java dumb lol
+    public static final int IMAGE_ORDINAL_FLAG32 = 0x80000000;
 
-	/* union: */
-	private Integer ordinal;
-	/* struct: */
-	private Integer hint;
-	private String name;
+    /*
+    // Either ordinal or name and hint can be set
+    union {
+        Integer ordinal;
+        struct {
+            Integer hint;
+            String name;
+        }
+    }
+     */
+    public final Integer ordinal;
+    public final Integer hint;
+    public final String name;
 
-	public ImageImportByName() {}
+    public ImageImportByName(int hint, String name) {
+        this.ordinal = null;
+        this.hint = hint;
+        this.name = name;
+    }
 
-	public ImageImportByName(int ordinal) {
-		this.ordinal = ordinal;
-	}
+    public ImageImportByName(int ordinal) {
+        this.ordinal = ordinal;
+        this.hint = null;
+        this.name = null;
+    }
 
-	public static ImageImportByName read(long addrAsOrdinal, boolean is64bit) {
-		// Check if addr is actually meant to be an ordinal
-		if ((is64bit && ((addrAsOrdinal & IMAGE_ORDINAL_FLAG64) != 0)) ||
-				(!is64bit && ((addrAsOrdinal & IMAGE_ORDINAL_FLAG32) != 0))) {
-			return new ImageImportByName((int) (addrAsOrdinal & 0xFFFF));
-		}
-		return null;
-	}
+    public static ParseResult<ImageImportByName> read(long addrAsOrdinal, boolean is64bit) {
+        // Check if addr is actually meant to be an ordinal
+        if ((addrAsOrdinal & getOrdinalFlag(is64bit)) != 0)
+            return ParseResult.ok(new ImageImportByName((int) (addrAsOrdinal & 0xFFFF)));
+        else
+            return ParseResult.err("Invalid import ordinal (does not have ordinal flag)");
+    }
 
-	public static ImageImportByName read(LittleEndianReader r, boolean is64bit) {
-		long pos = r.getStream().getPos();
-		ImageImportByName imp = new ImageImportByName();
+    public static ParseResult<ImageImportByName> read(LittleEndianReader r, boolean is64bit) {
+        try {
+            /*// Check if import is by ordinal
+            // FIXME: This can't be right. How is can pos be negative? This is required to set the ordinal flag.
+            long pos = r.getStream().getPos();
+            if ((pos & getOrdinalFlag(is64bit)) != 0) {
+                imp.ordinal = (int) (pos & 0xFFFF);
+            } else {
+                r.getStream().seek(pos); // Set position back and re-read as name
+            */
+            int hint = r.readWord();
+            String name = r.readNullTerminatedString(-1);
+            return ParseResult.ok(new ImageImportByName(hint, name));
+        } catch (IOException e) {
+            return ParseResult.err("IOException, cannot read ImageImportByName", e);
+        }
+    }
 
-		try {
-			// Check if import is by ordinal
-			if ((is64bit && ((pos & IMAGE_ORDINAL_FLAG64) != 0)) ||
-					(!is64bit && ((pos & IMAGE_ORDINAL_FLAG32) != 0))) {
-				imp.ordinal = (int) (pos & 0xFFFF);
-			} else {
-				r.getStream().seek(pos); // Set position back and re-read as name
-				imp.hint = r.readWord();
-				imp.name = r.readNullTerminatedString(-1);
-			}
-		} catch (IOException e) {
-			// TODO: Error handling
-			return null;
-		}
-
-		return imp;
-	}
-
-	public Integer getOrdinal() {
-		return ordinal;
-	}
-
-	public void setOrdinal(int ord) {
-		ordinal = ord;
-		hint = null;
-		name = null;
-	}
-
-	public int getHint() {
-		return hint;
-	}
-
-	public void setHint(int Hint) {
-		hint = Hint;
-		ordinal = null;
-	}
-
-	public String getName() {
-		return name;
-	}
-
-	public void setName(String Name) {
-		name = Name;
-		ordinal = null;
-	}
+    public static long getOrdinalFlag(boolean is64bit) {
+        return is64bit ? IMAGE_ORDINAL_FLAG64 : IMAGE_ORDINAL_FLAG32;
+    }
 }

@@ -6,17 +6,20 @@ import com.eclipsesource.json.JsonObject;
 import com.eclipsesource.json.JsonValue;
 import me.martinez.pe.io.CadesFileStream;
 import me.martinez.pe.io.LittleEndianReader;
+import me.martinez.pe.util.GenericError;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileReader;
+import java.util.ArrayList;
 
 public class VerifyImportsTest {
     @ParameterizedTest
     @MethodSource("paths")
-    void test(String path) {
+    public void test(String path) {
         try {
             run(path);
         } catch (Exception ex) {
@@ -29,88 +32,129 @@ public class VerifyImportsTest {
     }
 
     private static void run(String filePath) throws Exception {
+        JsonObject testData;
+        boolean testIsInvalid;
+
+        try (FileReader fr = new FileReader(TestSettings.basePath + filePath + "_test.json")) {
+            testData = Json.parse(fr).asObject();
+            JsonValue j = testData.get("isInvalid");
+            if (j != null)
+                testIsInvalid = j.asBoolean();
+            else
+                throw new Exception("Test data is missing the \"isInvalid\" field");
+        } catch (FileNotFoundException e) {
+            throw new Exception("Test data was not found! Be sure to run TestDataGenerator when adding/updating binaries!");
+        }
+
         CadesFileStream stream = new CadesFileStream(new File(TestSettings.basePath + filePath));
         LittleEndianReader reader = new LittleEndianReader(stream);
 
-        ImagePeHeaders pe = ImagePeHeaders.read(reader);
-        JsonObject test_data = Json.parse(new FileReader(TestSettings.basePath + filePath + "_test.json")).asObject();
+        ImagePeHeaders pe = ImagePeHeaders.read(reader).ifErr(err -> {
+            System.out.println("Error: " + err);
+        }).ifOk(val -> {
+            for (GenericError warning : val.warnings)
+                System.out.println("Warning: " + warning.toString());
+        }).getOkOrDefault(null);
 
-        JsonArray json_imports = null;
-        {
-            JsonValue j = test_data.get("imports");
-            if (j != null)
-                json_imports = j.asArray();
-        }
-        CheckImports(pe, json_imports);
+        if (pe == null != testIsInvalid)
+            throw new Exception(String.format("Expected isInvalid=%s, got %s", testIsInvalid, pe == null));
 
-        JsonArray json_exports = null;
-        {
-            JsonValue j = test_data.get("exports");
-            if (j != null)
-                json_exports = j.asArray();
+        if (pe != null) {
+            checkImports(testData, pe);
+            checkExports(testData, pe);
         }
-        CheckExports(pe, json_exports);
     }
 
-    private static void CheckImports(ImagePeHeaders pe, JsonArray json_imports) throws Exception {
-        if ((pe.importDescriptors == null) != (json_imports == null))
-            throw new Exception("Test data shows different absence or existence of import table");
-
-        if (json_imports != null) {
-            if (json_imports.size() != pe.getNumCachedImports())
-                throw new Exception("Bad number of imported libraries");
+    private static void checkImports(JsonObject testData, ImagePeHeaders pe) throws Exception {
+        JsonArray jsonImports = null;
+        {
+            JsonValue j = testData.get("imports");
+            if (j != null)
+                jsonImports = j.asArray();
         }
 
-        for (int i = 0; i < pe.getNumCachedImports(); ++i) {
-            CachedLibraryImports lib = pe.getCachedLibraryImport(i);
-            JsonObject json_lib = json_imports.get(i).asObject();
+        boolean testHasImports = jsonImports != null;
+        boolean hasImports = pe.cachedImps.isOk();
+
+        if (hasImports != (testHasImports))
+            throw new Exception(String.format("Expected hasImports=%s, got %s", testHasImports, hasImports));
+
+        if (!hasImports)
+            return; // No imports to check here!
+
+        ArrayList<CachedLibraryImports> cachedImps = pe.cachedImps.getOk();
+
+        if (jsonImports.size() != cachedImps.size())
+            throw new Exception(String.format("Expected imports.size=%s, got %s", jsonImports.size(), cachedImps.size()));
+
+        for (int i = 0; i < cachedImps.size(); ++i) {
+            CachedLibraryImports lib = cachedImps.get(i);
+            JsonObject json_lib = jsonImports.get(i).asObject();
             JsonArray json_entries = json_lib.get("entries").asArray();
 
-            if (!lib.getName().equals(json_lib.get("name").asString()))
+            if (!lib.name.equals(json_lib.get("name").asString()))
                 throw new Exception("Imported library has incorrect name or order");
-            if (lib.getNumEntries() != json_entries.size())
-                throw new Exception("Imported library has bad number of entries");
+            if (lib.entries.size() != json_entries.size())
+                throw new Exception("Imported library has incorrect number of entries");
 
-            for (int c = 0; c < lib.getNumEntries(); ++c) {
-                CachedImportEntry entry = lib.getEntry(c);
+            for (int c = 0; c < lib.entries.size(); ++c) {
+                CachedImportEntry entry = lib.entries.get(c);
                 JsonObject json_entry = json_entries.get(c).asObject();
                 JsonValue json_name = json_entry.get("name");
+                JsonValue json_ordinal = json_entry.get("ordinal");
 
-                if ((entry.getName() == null) != (json_name == null))
+                if ((entry.name == null) != (json_name == null)) {
                     throw new Exception("Import entry uses name where ordinal should be, or vice versa");
-                if (entry.getName() != null) {
-                    if (!entry.getName().equals(json_name.asString()))
+                } else if (entry.name != null) {
+                    if (!entry.name.equals(json_name.asString()))
                         throw new Exception("Import entry has incorrect name or order");
-                } else if (entry.getOrdinal() != json_entry.get("ordinal").asLong())
-                    throw new Exception("Import entry has incorrect order or ordinal");
+                }
 
-                if (entry.getAddress() != json_entry.get("address").asLong())
+                if ((entry.ordinal == null) != (json_ordinal == null)) {
+                    throw new Exception("Import entry uses name where ordinal should be, or vice versa");
+                } else if (entry.ordinal != null) {
+                    if (entry.ordinal != json_ordinal.asLong())
+                        throw new Exception("Import entry has incorrect ordinal or order");
+                }
+
+                if (entry.thunkAddress != json_entry.get("thunkAddress").asLong())
                     throw new Exception("Import entry has incorrect address");
             }
         }
     }
 
-    private static void CheckExports(ImagePeHeaders pe, JsonArray json_exports) throws Exception {
-        if ((pe.exportDirectory == null) != (json_exports == null))
-            throw new Exception("Test data shows different absence or existence of export table");
+    private static void checkExports(JsonObject testData, ImagePeHeaders pe) throws Exception {
+        JsonArray jsonExports = null;
+        {
+            JsonValue j = testData.get("exports");
+            if (j != null)
+                jsonExports = j.asArray();
+        }
 
-        if (json_exports != null) {
-            CachedImageExports exports = pe.getCachedExports();
+        boolean testHasExports = jsonExports != null;
+        boolean hasExports = pe.cachedExps.isOk();
 
-            if (json_exports.size() != exports.getNumEntries())
-                throw new Exception("Bad number of exported entries");
+        if (hasExports != testHasExports)
+            throw new Exception(String.format("Expected hasExports=%s, got %s", testHasExports, hasExports));
 
-            for (int i = 0; i < exports.getNumEntries(); ++i) {
-                CachedExportEntry entry = exports.getEntry(i);
-                JsonObject json_entry = json_exports.get(i).asObject();
+        if (!hasExports)
+            return; // No exports to check here!
 
-                if (!entry.getName().equals(json_entry.get("name").asString()))
-                    throw new Exception("Export entry has incorrect name or order");
-                if (entry.getOrdinal() != json_entry.get("ordinal").asInt())
-                    throw new Exception("Export entry has incorrect ordinal or order");
-                if (entry.getAddress() != json_entry.get("address").asLong())
-                    throw new Exception("Export entry has incorrect address");
-            }
+        CachedImageExports exports = pe.cachedExps.getOk();
+
+        if (jsonExports.size() != exports.entries.length)
+            throw new Exception(String.format("Expected exports.size=%s, got %s", jsonExports.size(), exports.entries.length));
+
+        for (int i = 0; i < exports.entries.length; ++i) {
+            CachedExportEntry entry = exports.entries[i];
+            JsonObject json_entry = jsonExports.get(i).asObject();
+
+            if (!entry.name.equals(json_entry.get("name").asString()))
+                throw new Exception("Export entry has incorrect name or order");
+            if (entry.ordinal != json_entry.get("ordinal").asInt())
+                throw new Exception("Export entry has incorrect ordinal or order");
+            if (entry.address != json_entry.get("address").asLong())
+                throw new Exception("Export entry has incorrect address");
         }
     }
 }

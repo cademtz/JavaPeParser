@@ -1,25 +1,20 @@
 package me.martinez.pe;
 
+/**
+ * Contains the name, the ordinal, and the address of an item being exported.
+ * This object is not a file structure but contains the information of multiple linked file structures.
+ */
 public class CachedExportEntry {
-	private final String name;
-	private final int ordinal;
-	private final long address; // Pointer being exported
+    public final String name;
+    public final int ordinal;
+    /**
+     * Address to be exported
+     */
+    public final long address;
 
-	public CachedExportEntry(String name, int ordinal, long address) {
-		this.name = name;
-		this.ordinal = ordinal;
-		this.address = address;
-	}
-
-	public String getName() {
-		return name;
-	}
-
-	public int getOrdinal() {
-		return ordinal;
-	}
-
-	public long getAddress() {
-		return address;
-	}
+    public CachedExportEntry(String name, int ordinal, long address) {
+        this.name = name;
+        this.ordinal = ordinal;
+        this.address = address;
+    }
 }

@@ -4,101 +4,140 @@ import com.eclipsesource.json.JsonArray;
 import com.eclipsesource.json.JsonObject;
 import me.martinez.pe.io.CadesFileStream;
 import me.martinez.pe.io.LittleEndianReader;
+import me.martinez.pe.util.GenericError;
 import me.martinez.pe.util.HexOutput;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.util.ArrayList;
 
 public class TestDataGenerator {
-	public static void main() throws IOException {
-		for (String path : TestSettings.sampleBinaries) {
-			run(path);
-		}
-	}
+    /*@ParameterizedTest
+    @MethodSource("paths")
+    public void test(String path) {
+        try {
+            run(path);
+        } catch (IOException e) {
+            Assertions.fail(e);
+        }
+    }*/
 
-	private static void run(String filePath) throws IOException {
-		CadesFileStream stream = new CadesFileStream(new File(TestSettings.basePath + filePath));
-		LittleEndianReader reader = new LittleEndianReader(stream);
+    public static void main(String[] args) {
+        for (String path : paths()) {
+            try {
+                run(path);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
 
-		ImagePeHeaders pe = ImagePeHeaders.read(reader);
-		ImageDataDirectory imp = pe.getDataDirectory(ImageOptionalHeader.IMAGE_DIRECTORY_ENTRY_IMPORT);
+    static String[] paths() {
+        return TestSettings.sampleBinaries;
+    }
 
-		JsonObject test_data = new JsonObject();
+    private static void run(String filePath) throws IOException {
+        System.out.println("Parsing " + filePath);
 
-		System.out.println("Import directory RVA: 0x" + HexOutput.dwordToString(imp.virtualAddress));
-		System.out.println("Import directory Size: 0x" + HexOutput.dwordToString(imp.size));
+        CadesFileStream stream = new CadesFileStream(new File(TestSettings.basePath + filePath));
+        LittleEndianReader reader = new LittleEndianReader(stream);
+        ImagePeHeaders pe = ImagePeHeaders.read(reader).ifErr(err -> {
+            System.out.println("Error: " + err);
+        }).ifOk(val -> {
+            for (GenericError warning : val.warnings)
+                System.out.println("Warning: " + warning);
+        }).getOkOrDefault(null);
 
-		// Warning: ALWAYS null check the import and export directories,
-		// as directories are OPTIONAL in the PE format.
+        File outFile = new File(TestSettings.basePath + filePath + "_test.json");
+        if (outFile.exists())
+            return;
 
-		// Print all imported libraries and name(s) included from them
-		if (pe.importDescriptors != null) {
-			JsonArray json_imports = new JsonArray();
-			test_data.add("imports", json_imports);
+        try (FileWriter w = new FileWriter(outFile)) {
+            JsonObject testData = new JsonObject();
 
-			System.out.println(pe.importDescriptors.size() + " Import tables");
+            testData.add("isInvalid", pe == null);
 
-			for (int i = 0; i < pe.getNumCachedImports(); ++i) {
-				CachedLibraryImports lib = pe.getCachedLibraryImport(i);
-				JsonObject json_lib = new JsonObject();
-				JsonArray json_entries = new JsonArray();
+            if (pe != null) {
+                ImageDataDirectory imp = pe.ntHeaders.getDataDirectory(ImageOptionalHeader.IMAGE_DIRECTORY_ENTRY_IMPORT);
 
-				json_lib.add("name", lib.getName());
-				json_lib.add("entries", json_entries);
-				json_imports.add(json_lib);
+                System.out.println("Import directory RVA: 0x" + HexOutput.dwordToString(imp.virtualAddress));
+                System.out.println("Import directory Size: 0x" + HexOutput.dwordToString(imp.size));
 
-				System.out.println(lib.getName());
+                appendImportData(testData, pe);
+                appendExportData(testData, pe);
+            }
 
-				for (int c = 0; c < lib.getNumEntries(); c++) {
-					CachedImportEntry entry = lib.getEntry(c);
-					JsonObject json_entry = new JsonObject();
+            testData.writeTo(w);
+            w.close();
 
-					json_entry.add("address", entry.getAddress());
-					json_entries.add(json_entry);
+            System.out.println("I survived!!");
+        }
+    }
 
-					System.out.print('\t');
+    private static void appendImportData(JsonObject testData, ImagePeHeaders pe) {
+        if (pe.cachedImps.isErr())
+            return;
 
-					if (entry.getName() != null) {
-						json_entry.add("name", entry.getName());
-						System.out.println("Name: " + entry.getName());
-					} else {
-						json_entry.add("ordinal", entry.getOrdinal());
-						System.out.println("Ordinal: " + entry.getOrdinal());
-					}
-				}
-			}
-		}
+        JsonArray jsonImports = new JsonArray();
+        testData.add("imports", jsonImports);
 
-		// Print all name(s) exported
-		if (pe.exportDirectory != null) {
-			JsonArray json_exports = new JsonArray();
-			test_data.add("exports", json_exports);
+        ArrayList<CachedLibraryImports> cachedImps = pe.cachedImps.getOk();
+        for (CachedLibraryImports lib : cachedImps) {
+            JsonObject jsonLib = new JsonObject();
+            JsonArray json_entries = new JsonArray();
 
-			System.out.println(pe.exportDirectory.numberOfNames + " exports");
+            jsonLib.add("name", lib.name);
+            jsonLib.add("entries", json_entries);
+            jsonImports.add(jsonLib);
 
-			for (int i = 0; i < pe.getCachedExports().getNumEntries(); ++i) {
-				CachedExportEntry entry = pe.getCachedExports().getEntry(i);
-				JsonObject json_entry = new JsonObject();
+            System.out.println(lib.name);
 
-				json_entry.add("name", entry.getName());
-				json_entry.add("ordinal", entry.getOrdinal());
-				json_entry.add("address", entry.getAddress());
-				json_exports.add(json_entry);
+            for (CachedImportEntry entry : lib.entries) {
+                JsonObject jsonEntry = new JsonObject();
 
-				System.out.print("\tRVA: " +
-						HexOutput.dwordToString(entry.getAddress() - pe.ntHeader.optionalHeader.imageBase));
-				System.out.println(" Ordinal: " + entry.getOrdinal() + ", Name: " + entry.getName());
-			}
-		}
+                jsonEntry.add("thunkAddress", entry.thunkAddress);
+                json_entries.add(jsonEntry);
 
-		FileWriter w = new FileWriter(TestSettings.basePath + filePath + "_test.json");
-		test_data.writeTo(w);
-		w.close();
+                System.out.print('\t');
 
-		System.out.println("I survived!!");
-	}
+                if (entry.name != null) {
+                    jsonEntry.add("name", entry.name);
+                    System.out.println("Name: " + entry.name);
+                }
+                if (entry.ordinal != null) {
+                    jsonEntry.add("ordinal", entry.ordinal);
+                    System.out.println("Ordinal: " + entry.ordinal);
+                }
+            }
+        }
+    }
+
+    public static void appendExportData(JsonObject testData, ImagePeHeaders pe) {
+        if (pe.exportDirectory.isErr())
+            return;
+
+        JsonArray jsonExports = new JsonArray();
+        testData.add("exports", jsonExports);
+
+        ImageExportDirectory expDir = pe.exportDirectory.getOk();
+        System.out.println(expDir.numberOfNames + " exports");
+
+        if (pe.cachedExps.isOk()) {
+            CachedImageExports exports = pe.cachedExps.getOk();
+
+            for (CachedExportEntry entry : exports.entries) {
+                JsonObject jsonEntry = new JsonObject();
+
+                jsonEntry.add("name", entry.name);
+                jsonEntry.add("ordinal", entry.ordinal);
+                jsonEntry.add("address", entry.address);
+                jsonExports.add(jsonEntry);
+
+                System.out.print("\tRVA: " +
+                        HexOutput.dwordToString(entry.address - pe.ntHeaders.optionalHeader.imageBase));
+                System.out.println(" Ordinal: " + entry.ordinal + ", Name: " + entry.name);
+            }
+        }
+    }
 }

@@ -12,7 +12,11 @@ public class TestSettings {
     public static final String[] sampleBinaries = {
             "paint-10-x32+.exe",
             "paint-XP-x32.exe",
-            "java-zip.dll"
+            "java-zip.dll",
+            "ctest.exe",
+            "ctest_mangled_dos.exe",
+            "ctest_mangled_nt.exe",
+            "ctest_mangled_import.exe"
     };
 
     public static List<Path> paths() throws IOException {

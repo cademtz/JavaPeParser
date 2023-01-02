@@ -3,237 +3,270 @@ package me.martinez.pe;
 import me.martinez.pe.io.CadesStreamReader;
 import me.martinez.pe.io.CadesVirtualMemStream;
 import me.martinez.pe.io.LittleEndianReader;
+import me.martinez.pe.util.GenericError;
+import me.martinez.pe.util.ParseResult;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 public class ImagePeHeaders {
-	public ImageDosHeader dosHeader;
-	public ImageNtHeaders ntHeader;
-	public ImageSectionHeader[] sectionHeaders;
-	/**
-	 * {@link null} value means invalid import table.
-	 * <br>
-	 * Empty list means import table is unused or empty.
-	 */
-	public List<ImageImportDescriptor> importDescriptors;
-	public ImageExportDirectory exportDirectory;
-	private List<CachedLibraryImports> cachedImps;
-	private CachedImageExports cachedExps;
+    public ArrayList<GenericError> warnings = new ArrayList<>();
+    public ImageDosHeader dosHeader;
+    public ImageNtHeaders ntHeaders;
+    public ArrayList<ParseResult<ImageSectionHeader>> sectionHeaders;
+    public ParseResult<ArrayList<ImageImportDescriptor>> importDescriptors;
+    public ParseResult<ImageExportDirectory> exportDirectory;
+    public ParseResult<ArrayList<CachedLibraryImports>> cachedImps;
+    public ParseResult<CachedImageExports> cachedExps;
 
-	public static ImagePeHeaders read(LittleEndianReader r) {
-		CadesVirtualMemStream vmem;
-		ImagePeHeaders pe = new ImagePeHeaders();
-		try {
-			pe.dosHeader = ImageDosHeader.read(r);
-			if (pe.dosHeader == null)
-				return null;
-			// Seek to provided address of NT header
-			r.getStream().seek(pe.dosHeader.lfanew);
-			pe.ntHeader = ImageNtHeaders.read(r);
-			if (pe.ntHeader == null)
-				return null;
-			pe.sectionHeaders = new ImageSectionHeader[pe.ntHeader.fileHeader.numberOfSections];
-			for (int i = 0; i < pe.sectionHeaders.length; ++i)
-				pe.sectionHeaders[i] = ImageSectionHeader.read(r);
-		} catch (IOException e) {
-			// TODO: Error handling
-			return null;
-		}
-		vmem = pe.makeVirtualMemStream(r.getStream());
-		pe.updateImports(vmem);
-		pe.updateExports(vmem);
-		return pe;
-	}
+    private ImagePeHeaders() {
+    }
 
-	public boolean is64bit() {
-		return ntHeader.is64bit();
-	}
+    /**
+     * Reads required and optional PE headers.
+     * Collects warnings about any optional data that is missing, unreadable, or invalid.
+     *
+     * @param fmem A data stream positioned at the start of a PE file/PE file data
+     * @return A new {@link ImagePeHeaders} or an error
+     * @see #warnings
+     */
+    public static ParseResult<ImagePeHeaders> read(LittleEndianReader fmem) {
+        ImagePeHeaders pe = new ImagePeHeaders();
 
-	public ImageDataDirectory getDataDirectory(int index) {
-		return ntHeader.getDataDirectory(index);
-	}
+        GenericError err = ImageDosHeader.read(fmem).ifOk(dos -> pe.dosHeader = dos).getErrOrDefault(null);
+        if (err != null)
+            return ParseResult.err(err);
 
-	public CachedImageExports getCachedExports() {
-		return cachedExps;
-	}
+        try {
+            // Seek to provided address of NT header
+            fmem.getStream().seek(pe.dosHeader.lfanew);
+        } catch (IOException e) {
+            return ParseResult.err("IOException, the address to the NT headers is not readable", e);
+        }
 
-	public int getNumCachedImports() {
-		return cachedImps.size();
-	}
+        // Try parsing the NT headers
+        err = ImageNtHeaders.read(fmem).ifOk(hdrs -> pe.ntHeaders = hdrs).getErrOrDefault(null);
+        if (err != null)
+            return ParseResult.err(err);
 
-	public CachedLibraryImports getCachedLibraryImport(int index) {
-		return cachedImps.get(index);
-	}
+        // Validate number of sections.
+        // "Note that the Windows loader limits the number of sections to 96."
+        // https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#coff-file-header-object-and-image
+        int numSections = pe.ntHeaders.fileHeader.numberOfSections;
+        if (numSections > ImageFileHeader.MAX_WIN_LOADER_SECTIONS) {
+            pe.warnings.add(new GenericError(String.format(
+                    "ImageFileHeader.numberOfSections (%d) exceeds the Windows loader's max number of sections (%d)",
+                    numSections, ImageFileHeader.MAX_WIN_LOADER_SECTIONS
+            )));
+        }
 
-	public CadesVirtualMemStream makeVirtualMemStream(CadesStreamReader rawFile) {
-		return new CadesVirtualMemStream(this, rawFile);
-	}
+        // TODO: Validate more stuff:
+        // TODO: Is entry point set? Does it point to a valid, executable section?
+        // TODO: Is SizeOfCode/SizeOfInitializedData/SizeOfUninitializedData too large?
+        // TODO: Is BaseOfCode valid?
+        // TODO: Is ImageBase valid?
+        // TODO: For each used directory, do they point to valid sections (with appropriate read/write/exec access)?
 
-	/**
-	 * Reads (or re-reads) the import table.
-	 *
-	 * @param vmem
-	 * 		Virtual memory stream of this PE's data
-	 *
-	 * @see ImagePeHeaders#makeVirtualMemStream
-	 * @see ImagePeHeaders#importDescriptors
-	 */
-	public void updateImports(CadesVirtualMemStream vmem) {
-		ImageImportDescriptor desc;
-		LittleEndianReader r = new LittleEndianReader(vmem);
-		ImageDataDirectory imp = getDataDirectory(ImageOptionalHeader.IMAGE_DIRECTORY_ENTRY_IMPORT);
+        // From here, everything must be read by converting virtual addresses to file addresses.
+        // Construct a virtual memory stream and make sure it reads in little endian.
+        LittleEndianReader vmem = new LittleEndianReader(pe.makeVirtualMemStream(fmem.getStream()));
 
-		importDescriptors = null; // Null-initialize. Will be set if read is successful.
-		cachedImps = null;
+        pe.sectionHeaders = new ArrayList<>();
+        for (int i = 0; i < pe.ntHeaders.fileHeader.numberOfSections; ++i)
+            pe.sectionHeaders.add(ImageSectionHeader.read(vmem));
 
-		if (imp == null || imp.virtualAddress == 0)
-			return;
+        // Try reading raw import descriptor headers
+        pe.importDescriptors = pe.readImportDescriptors(vmem);
+        if (pe.importDescriptors.isOk()) {
+            // If raw import descriptor headers parsed ok, try reading all their listed entries
+            pe.cachedImps = pe.readImportDescEntries(vmem, pe.importDescriptors.getOk());
+            if (pe.cachedImps.isErr())
+                pe.warnings.add(pe.cachedImps.getErr());
+        } else {
+            pe.warnings.add(pe.importDescriptors.getErr());
+            pe.cachedImps = ParseResult.err(pe.importDescriptors.getErr());
+        }
 
-		try {
-			r.getStream().seek(ntHeader.optionalHeader.imageBase + imp.virtualAddress);
-			importDescriptors = new ArrayList<>();
-			desc = ImageImportDescriptor.read(r);
-			// Read until null-terminated characteristics value
-			while (desc != null && desc.getCharacteristics() != 0) {
-				importDescriptors.add(desc);
-				desc = ImageImportDescriptor.read(r);
-			}
-			if (desc == null) {
-				importDescriptors = null;
-				return;
-			}
-			updateImportCache(r);
-		} catch (IOException e) {
-			importDescriptors = null;
-			cachedImps = null;
-		}
-	}
+        // Try reading raw export headers. Don't emit warnings because it's often unused.
+        pe.exportDirectory = pe.readExportDirectory(vmem);
 
-	public void updateExports(CadesVirtualMemStream vmem) {
-		long baseVaddr = ntHeader.optionalHeader.imageBase;
-		LittleEndianReader r = new LittleEndianReader(vmem);
-		ImageDataDirectory exp = getDataDirectory(ImageOptionalHeader.IMAGE_DIRECTORY_ENTRY_EXPORT);
+        // If raw export headers parsed ok, try reading all the listed entries
+        if (pe.exportDirectory.isOk()) {
+            pe.cachedExps = pe.readExportEntries(vmem, pe.exportDirectory.getOk());
+            if (pe.cachedExps.isErr())
+                pe.warnings.add(pe.cachedExps.getErr());
+        } else {
+            pe.cachedExps = ParseResult.err(pe.exportDirectory.getErr());
+        }
+        return ParseResult.ok(pe);
+    }
 
-		exportDirectory = null;
-		cachedExps = null;
+    public boolean is64bit() {
+        return ntHeaders.is64bit();
+    }
 
-		if (exp == null || exp.virtualAddress == 0)
-			return;
+    public CadesVirtualMemStream makeVirtualMemStream(CadesStreamReader rawFile) {
+        return new CadesVirtualMemStream(this, rawFile);
+    }
 
-		try {
-			r.getStream().seek(exp.virtualAddress + baseVaddr);
-			exportDirectory = ImageExportDirectory.read(r);
+    /**
+     * Reads (or re-reads) the import table.
+     *
+     * @param r Virtual memory stream of this PE's data
+     * @see ImagePeHeaders#makeVirtualMemStream
+     * @see ImagePeHeaders#importDescriptors
+     */
+    public ParseResult<ArrayList<ImageImportDescriptor>> readImportDescriptors(LittleEndianReader r) {
+        ImageDataDirectory imp = ntHeaders.getDataDirectory(ImageOptionalHeader.IMAGE_DIRECTORY_ENTRY_IMPORT);
 
-			if (exportDirectory == null)
-				return;
+        if (imp == null || imp.virtualAddress == 0)
+            return ParseResult.err("Missing or empty import table");
 
-			updateExportCache(r);
-		} catch (IOException e) {
-			exportDirectory = null;
-			cachedExps = null;
-		}
-	}
+        try {
+            r.getStream().seek(ntHeaders.optionalHeader.imageBase + imp.virtualAddress);
+        } catch (IOException e) {
+            return ParseResult.err("IOException, the address to the import directory is not readable", e);
+        }
 
-	private void updateImportCache(LittleEndianReader r) throws IOException {
-		long baseVaddr = ntHeader.optionalHeader.imageBase;
+        ArrayList<ImageImportDescriptor> importDescs = new ArrayList<>();
+        ParseResult<ImageImportDescriptor> desc = ImageImportDescriptor.read(r);
+        // Read until null-terminated characteristics value
+        while (desc.isOk() && desc.getOk().getCharacteristics() != 0) {
+            importDescs.add(desc.getOk());
+            desc = ImageImportDescriptor.read(r);
+        }
 
-		if (cachedImps == null)
-			cachedImps = new ArrayList<>();
-		else
-			cachedImps.clear();
+        if (!desc.isOk())
+            return ParseResult.err(desc.getErr());
 
-		for (ImageImportDescriptor desc : importDescriptors) {
-			String name;
-			ImageImportByName imp;
-			List<Long> rvaTable;
-			List<ImageImportByName> nameTable;
-			List<CachedImportEntry> entries;
+        return ParseResult.ok(importDescs);
+    }
 
-			// Read library name
-			r.getStream().seek(desc.name + baseVaddr);
-			name = r.readNullTerminatedString(-1);
+    public ParseResult<ArrayList<CachedLibraryImports>> readImportDescEntries(
+            LittleEndianReader r,
+            Collection<ImageImportDescriptor> descList
+    ) {
+        long baseVaddr = ntHeaders.optionalHeader.imageBase;
 
-			// Read null-terminated array of pointers (RVAs) to ImageImportByName
-			r.getStream().seek(desc.getOriginalFirstThunk() + baseVaddr);
-			rvaTable = r.readTerminatedValues(is64bit() ? 64 : 32, 0, -1);
+        ArrayList<CachedLibraryImports> newImps = new ArrayList<>();
 
-			// Read each ImageImportByName pointed to in the table
-			nameTable = new ArrayList<>();
-			for (Long rva : rvaTable) {
-				// Check if rva is actually read as an ordinal
-				imp = ImageImportByName.read(rva, is64bit());
+        try {
+            for (ImageImportDescriptor desc : descList) {
+                String name;
+                List<Long> rvaTable;
+                List<ImageImportByName> nameTable;
+                List<CachedImportEntry> entries;
 
-				if (imp == null) { // Nope. Points to extra ImageImportByName then.
-					r.getStream().seek(rva + baseVaddr);
-					imp = ImageImportByName.read(r, is64bit());
-				}
+                // Read library name
+                r.getStream().seek(desc.name + baseVaddr);
+                name = r.readNullTerminatedString(-1);
 
-				// Failed to read? Then cause an exception in updateImports to delete EVARYTHING!!!
-				if (imp == null)
-					throw new IOException("Failed to read ImageImportByName");
+                // Read null-terminated array of pointers (RVAs) to ImageImportByName
+                r.getStream().seek(desc.getOriginalFirstThunk() + baseVaddr);
+                rvaTable = r.readTerminatedValues(is64bit() ? 64 : 32, 0, -1);
 
-				nameTable.add(imp);
-			}
+                // Read each ImageImportByName pointed to in the table
+                nameTable = new ArrayList<>();
+                for (Long rva : rvaTable) {
+                    // Check if rva should be interpreted as an ordinal
+                    ParseResult<ImageImportByName> imp = ImageImportByName.read(rva, is64bit());
 
-			// Read null-terminated array of pointers (RVAs) to destination address of import
-			r.getStream().seek(desc.firstThunk + baseVaddr);
-			rvaTable = r.readTerminatedValues(is64bit() ? 64 : 32, 0, -1);
+                    if (imp.isErr()) { // Nope. Try interpreting as a string address then.
+                        r.getStream().seek(rva + baseVaddr);
+                        imp = ImageImportByName.read(r, is64bit());
+                    }
 
-			if (rvaTable.size() != nameTable.size())
-				throw new IOException("Import descriptor's name and address table don't match");
+                    if (imp.isErr())
+                        return ParseResult.err(imp.getErr());
 
-			// Putting it all together
-			entries = new ArrayList<>();
-			for (int i = 0; i < rvaTable.size(); ++i) {
-				ImageImportByName entry = nameTable.get(i);
-				entries.add(new CachedImportEntry(entry.getName(), entry.getOrdinal(), rvaTable.get(i)));
-			}
+                    nameTable.add(imp.getOk());
+                }
 
-			cachedImps.add(new CachedLibraryImports(name, desc.timeDateStamp, desc.forwarderChain, entries));
-		}
-	}
+                // Read null-terminated array of pointers (RVAs) to destination address of import
+                r.getStream().seek(desc.firstThunk + baseVaddr);
+                rvaTable = r.readTerminatedValues(is64bit() ? 64 : 32, 0, -1);
 
-	private void updateExportCache(LittleEndianReader r) throws IOException {
-		String name;
-		long[] funcsTable;
-		long[] namesTable;
-		long[] ordsTable;
-		CachedExportEntry[] entries;
-		long baseVaddr = ntHeader.optionalHeader.imageBase;
+                if (rvaTable.size() != nameTable.size()) {
+                    return ParseResult.err("Import descriptor's name and address table sizes are mismatched");
+                }
 
-		r.getStream().seek(exportDirectory.name + baseVaddr);
-		name = r.readNullTerminatedString(-1);
+                // Putting it all together
+                entries = new ArrayList<>();
+                for (int i = 0; i < rvaTable.size(); ++i) {
+                    ImageImportByName entry = nameTable.get(i);
+                    entries.add(new CachedImportEntry(entry.name, entry.ordinal, rvaTable.get(i)));
+                }
 
-		r.getStream().seek(exportDirectory.addressOfFunctions + baseVaddr);
-		funcsTable = r.readValues(32, (int) exportDirectory.numberOfFunctions);
+                newImps.add(new CachedLibraryImports(name, desc.timeDateStamp, desc.forwarderChain, entries));
+            }
+        } catch (IOException e) {
+            return ParseResult.err("IOException, cannot read ImageImportByName entry", e);
+        }
 
-		r.getStream().seek(exportDirectory.addressOfNames + baseVaddr);
-		namesTable = r.readValues(32, (int) exportDirectory.numberOfNames);
+        return ParseResult.ok(newImps);
+    }
 
-		r.getStream().seek(exportDirectory.addressOfNameOrdinals + baseVaddr);
-		ordsTable = r.readValues(16, (int) exportDirectory.numberOfNames);
+    public ParseResult<ImageExportDirectory> readExportDirectory(LittleEndianReader r) {
+        long baseVaddr = ntHeaders.optionalHeader.imageBase;
+        ImageDataDirectory exp = ntHeaders.getDataDirectory(ImageOptionalHeader.IMAGE_DIRECTORY_ENTRY_EXPORT);
 
-		entries = new CachedExportEntry[namesTable.length];
-		for (int i = 0; i < (int) exportDirectory.numberOfNames; ++i) {
-			int entryOrd;
-			long entryVa;
-			String entryName;
+        if (exp == null || exp.virtualAddress == 0)
+            return ParseResult.err("Missing or empty export table");
 
-			try {
-				entryOrd = (int) ordsTable[i];
-				entryVa = funcsTable[entryOrd] + baseVaddr;
+        try {
+            r.getStream().seek(exp.virtualAddress + baseVaddr);
+        } catch (IOException e) {
+            return ParseResult.err("IOException, the address to the export directory is invalid", e);
+        }
 
-				r.getStream().seek(namesTable[i] + baseVaddr);
-				entryName = r.readNullTerminatedString(-1);
-			} catch (IndexOutOfBoundsException e) { // wholesome 100
-				throw new IOException("Bad export ordinal to name or function table");
-			}
+        return ImageExportDirectory.read(r);
+    }
 
-			entries[i] = new CachedExportEntry(entryName, entryOrd, entryVa);
-		}
+    public ParseResult<CachedImageExports> readExportEntries(LittleEndianReader r, ImageExportDirectory expDir) {
+        String name;
+        long[] funcsTable;
+        long[] namesTable;
+        long[] ordsTable;
+        CachedExportEntry[] entries;
+        long baseVaddr = ntHeaders.optionalHeader.imageBase;
 
-		cachedExps = new CachedImageExports(name, entries);
-	}
+        try {
+            r.getStream().seek(expDir.name + baseVaddr);
+            name = r.readNullTerminatedString(-1);
+
+            r.getStream().seek(expDir.addressOfFunctions + baseVaddr);
+            funcsTable = r.readValues(32, (int) expDir.numberOfFunctions);
+
+            r.getStream().seek(expDir.addressOfNames + baseVaddr);
+            namesTable = r.readValues(32, (int) expDir.numberOfNames);
+
+            r.getStream().seek(expDir.addressOfNameOrdinals + baseVaddr);
+            ordsTable = r.readValues(16, (int) expDir.numberOfNames);
+
+            entries = new CachedExportEntry[namesTable.length];
+            for (int i = 0; i < (int) expDir.numberOfNames; ++i) {
+                int entryOrd;
+                long entryVa;
+                String entryName;
+
+                try {
+                    entryOrd = (int) ordsTable[i];
+                    entryVa = funcsTable[entryOrd] + baseVaddr;
+
+                    r.getStream().seek(namesTable[i] + baseVaddr);
+                    entryName = r.readNullTerminatedString(-1);
+                } catch (IndexOutOfBoundsException e) { // wholesome 100
+                    return ParseResult.err("IndexOutOfBoundsException, invalid export ordinal to name or function table", e);
+                }
+
+                entries[i] = new CachedExportEntry(entryName, entryOrd, entryVa);
+            }
+        } catch (IOException e) {
+            return ParseResult.err("IOException, cannot read export table(s)", e);
+        }
+
+        return ParseResult.ok(new CachedImageExports(name, entries));
+    }
 }
