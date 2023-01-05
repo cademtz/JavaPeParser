@@ -71,10 +71,13 @@ You can ignore any errors and only use the `ok` values _(when available)_.
 pe.imports.ifOk(imports -> printImports(imports));
 ```
 
-Or, you can use a classic `null` check.
+Or, you can use a classic `null` check _(and log errors on the side)_.
 
 ```java
-ArrayList<LibraryImports> imports = pe.imports.getOkOrDefault(null);
+ArrayList<LibraryImports> imports = pe.imports
+        .ifErr(err -> System.out.println(err)) // Optional call
+        .getOkOrDefault(null);
+
 if (imports != null)
     printImports(imports);
 ```
