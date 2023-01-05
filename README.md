@@ -51,7 +51,7 @@ if (pe != null) {
 ## More usage
 
 Much of the data in a portable executable is optional.
-Optional data is held in a `ParseResult` class,
+Optional data uses the `ParseResult` class,
 which holds either a value or `ParseError` object.
 There are multiple ways to handle `ParseResult`.
 
@@ -65,7 +65,7 @@ else
     System.out.println(imports.getErr());
 ```
 
-You can ignore errors and only use the `ok` values when possible.
+You can ignore any errors and only use the `ok` values _(when available)_.
 
 ```java
 pe.imports.ifOk(imports -> printImports(imports));
