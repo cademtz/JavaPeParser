@@ -1,5 +1,6 @@
-package me.martinez.pe;
+package me.martinez.pe.headers;
 
+import me.martinez.pe.io.CadesVirtualMemStream;
 import me.martinez.pe.io.LittleEndianReader;
 import me.martinez.pe.util.ParseResult;
 
@@ -19,7 +20,8 @@ public class ImageSectionHeader {
     public int numberOfLinenumbers;
     public long characteristics;
 
-    public static ParseResult<ImageSectionHeader> read(LittleEndianReader r) {
+    public static ParseResult<ImageSectionHeader> read(CadesVirtualMemStream vmem) {
+        LittleEndianReader r = new LittleEndianReader(vmem);
         ImageSectionHeader hdr = new ImageSectionHeader();
 
         try {
@@ -44,23 +46,11 @@ public class ImageSectionHeader {
         return name;
     }
 
-    public void setName(String Name) {
-        name = Name.substring(0, IMAGE_SIZEOF_SHORT_NAME);
-    }
-
     public long getPhysicalAddress() {
         return physicalAddr_vSize;
     }
 
-    public void setPhysicalAddress(int addr) {
-        physicalAddr_vSize = addr;
-    }
-
     public long getVirtualSize() {
         return physicalAddr_vSize;
-    }
-
-    public void setVirtualSize(int size) {
-        physicalAddr_vSize = size;
     }
 }

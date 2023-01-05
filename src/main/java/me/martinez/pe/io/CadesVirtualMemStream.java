@@ -1,25 +1,31 @@
 package me.martinez.pe.io;
 
-import me.martinez.pe.ImagePeHeaders;
-import me.martinez.pe.ImageSectionHeader;
+import me.martinez.pe.PeImage;
+import me.martinez.pe.headers.ImageSectionHeader;
 import me.martinez.pe.util.ParseResult;
 
 import java.io.IOException;
 
+/**
+ * Read and navigate the data in a PE file by using virtual addresses
+ */
 public class CadesVirtualMemStream extends CadesStreamReader {
-    private final ImagePeHeaders pe;
-    private final CadesStreamReader rawFile;
+    private final PeImage pe;
+    private final CadesStreamReader fdata;
 
-    public CadesVirtualMemStream(ImagePeHeaders pe, CadesStreamReader rawFile) {
+    /**
+     * @param fdata Input stream where {@link #pe} file data starts at position 0
+     */
+    public CadesVirtualMemStream(PeImage pe, CadesStreamReader fdata) {
         this.pe = pe;
-        this.rawFile = rawFile;
+        this.fdata = fdata;
         setPos(pe.ntHeaders.optionalHeader.imageBase);
     }
 
     @Override
     public int read() throws IOException {
         incrementPos(1);
-        return rawFile.read() & 0xFF;
+        return fdata.read() & 0xFF;
     }
 
     @Override
@@ -29,7 +35,7 @@ public class CadesVirtualMemStream extends CadesStreamReader {
             throw new IOException("Virtual address does not point to readable memory page");
 
         setPos(pos);
-        rawFile.seek(real);
+        fdata.seek(real);
     }
 
     @Override

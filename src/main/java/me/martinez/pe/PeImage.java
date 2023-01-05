@@ -1,9 +1,10 @@
 package me.martinez.pe;
 
+import me.martinez.pe.headers.*;
 import me.martinez.pe.io.CadesStreamReader;
 import me.martinez.pe.io.CadesVirtualMemStream;
 import me.martinez.pe.io.LittleEndianReader;
-import me.martinez.pe.util.GenericError;
+import me.martinez.pe.util.ParseError;
 import me.martinez.pe.util.ParseResult;
 
 import java.io.IOException;
@@ -11,43 +12,61 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-public class ImagePeHeaders {
-    public ArrayList<GenericError> warnings = new ArrayList<>();
+/**
+ * Parse PE headers, optional data, and provide {@link #warnings}.
+ * Optional data is stored in a {@link ParseResult} object
+ *
+ * @see #warnings
+ */
+public class PeImage {
+    public ArrayList<ParseError> warnings = new ArrayList<>();
     public ImageDosHeader dosHeader;
     public ImageNtHeaders ntHeaders;
     public ArrayList<ParseResult<ImageSectionHeader>> sectionHeaders;
     public ParseResult<ArrayList<ImageImportDescriptor>> importDescriptors;
     public ParseResult<ImageExportDirectory> exportDirectory;
-    public ParseResult<ArrayList<CachedLibraryImports>> cachedImps;
-    public ParseResult<CachedImageExports> cachedExps;
+    public ParseResult<ArrayList<LibraryImports>> imports;
+    public ParseResult<LibraryExport> exports;
 
-    private ImagePeHeaders() {
+    private PeImage() {
     }
 
     /**
      * Reads required and optional PE headers.
      * Collects warnings about any optional data that is missing, unreadable, or invalid.
      *
-     * @param fmem A data stream positioned at the start of a PE file/PE file data
-     * @return A new {@link ImagePeHeaders} or an error
+     * @param fdata A stream positioned at the start of a PE file/PE file data
+     * @return A new {@link PeImage} or an error
      * @see #warnings
      */
-    public static ParseResult<ImagePeHeaders> read(LittleEndianReader fmem) {
-        ImagePeHeaders pe = new ImagePeHeaders();
+    public static ParseResult<PeImage> read(CadesStreamReader fdata) {
+        return read(new LittleEndianReader(fdata));
+    }
 
-        GenericError err = ImageDosHeader.read(fmem).ifOk(dos -> pe.dosHeader = dos).getErrOrDefault(null);
+    /**
+     * Reads required and optional PE headers.
+     * Collects warnings about any optional data that is missing, unreadable, or invalid.
+     *
+     * @param fdata A stream positioned at the start of a PE file/PE file data
+     * @return A new {@link PeImage} or an error
+     * @see #warnings
+     */
+    public static ParseResult<PeImage> read(LittleEndianReader fdata) {
+        PeImage pe = new PeImage();
+
+        ParseError err = ImageDosHeader.read(fdata).ifOk(dos -> pe.dosHeader = dos).getErrOrDefault(null);
         if (err != null)
             return ParseResult.err(err);
 
         try {
             // Seek to provided address of NT header
-            fmem.getStream().seek(pe.dosHeader.lfanew);
+            fdata.getStream().seek(pe.dosHeader.lfanew);
         } catch (IOException e) {
             return ParseResult.err("IOException, the address to the NT headers is not readable", e);
         }
 
         // Try parsing the NT headers
-        err = ImageNtHeaders.read(fmem).ifOk(hdrs -> pe.ntHeaders = hdrs).getErrOrDefault(null);
+        err = ImageNtHeaders.read(fdata).ifOk(hdrs -> pe.ntHeaders = hdrs).getErrOrDefault(null);
         if (err != null)
             return ParseResult.err(err);
 
@@ -56,7 +75,7 @@ public class ImagePeHeaders {
         // https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#coff-file-header-object-and-image
         int numSections = pe.ntHeaders.fileHeader.numberOfSections;
         if (numSections > ImageFileHeader.MAX_WIN_LOADER_SECTIONS) {
-            pe.warnings.add(new GenericError(String.format(
+            pe.warnings.add(new ParseError(String.format(
                     "ImageFileHeader.numberOfSections (%d) exceeds the Windows loader's max number of sections (%d)",
                     numSections, ImageFileHeader.MAX_WIN_LOADER_SECTIONS
             )));
@@ -71,7 +90,7 @@ public class ImagePeHeaders {
 
         // From here, everything must be read by converting virtual addresses to file addresses.
         // Construct a virtual memory stream and make sure it reads in little endian.
-        LittleEndianReader vmem = new LittleEndianReader(pe.makeVirtualMemStream(fmem.getStream()));
+        CadesVirtualMemStream vmem = pe.makeVirtualMemStream(fdata.getStream());
 
         pe.sectionHeaders = new ArrayList<>();
         for (int i = 0; i < pe.ntHeaders.fileHeader.numberOfSections; ++i)
@@ -81,12 +100,12 @@ public class ImagePeHeaders {
         pe.importDescriptors = pe.readImportDescriptors(vmem);
         if (pe.importDescriptors.isOk()) {
             // If raw import descriptor headers parsed ok, try reading all their listed entries
-            pe.cachedImps = pe.readImportDescEntries(vmem, pe.importDescriptors.getOk());
-            if (pe.cachedImps.isErr())
-                pe.warnings.add(pe.cachedImps.getErr());
+            pe.imports = pe.readImportDescEntries(vmem, pe.importDescriptors.getOk());
+            if (pe.imports.isErr())
+                pe.warnings.add(pe.imports.getErr());
         } else {
             pe.warnings.add(pe.importDescriptors.getErr());
-            pe.cachedImps = ParseResult.err(pe.importDescriptors.getErr());
+            pe.imports = ParseResult.err(pe.importDescriptors.getErr());
         }
 
         // Try reading raw export headers. Don't emit warnings because it's often unused.
@@ -94,11 +113,11 @@ public class ImagePeHeaders {
 
         // If raw export headers parsed ok, try reading all the listed entries
         if (pe.exportDirectory.isOk()) {
-            pe.cachedExps = pe.readExportEntries(vmem, pe.exportDirectory.getOk());
-            if (pe.cachedExps.isErr())
-                pe.warnings.add(pe.cachedExps.getErr());
+            pe.exports = pe.readExportEntries(vmem, pe.exportDirectory.getOk());
+            if (pe.exports.isErr())
+                pe.warnings.add(pe.exports.getErr());
         } else {
-            pe.cachedExps = ParseResult.err(pe.exportDirectory.getErr());
+            pe.exports = ParseResult.err(pe.exportDirectory.getErr());
         }
         return ParseResult.ok(pe);
     }
@@ -107,18 +126,24 @@ public class ImagePeHeaders {
         return ntHeaders.is64bit();
     }
 
-    public CadesVirtualMemStream makeVirtualMemStream(CadesStreamReader rawFile) {
-        return new CadesVirtualMemStream(this, rawFile);
+    /**
+     * @param fdata Input stream where PE file data starts at position 0
+     * @return {@link CadesVirtualMemStream}
+     * @see CadesVirtualMemStream
+     */
+    public CadesVirtualMemStream makeVirtualMemStream(CadesStreamReader fdata) {
+        return new CadesVirtualMemStream(this, fdata);
     }
 
     /**
      * Reads (or re-reads) the import table.
      *
-     * @param r Virtual memory stream of this PE's data
-     * @see ImagePeHeaders#makeVirtualMemStream
-     * @see ImagePeHeaders#importDescriptors
+     * @param vmem Virtual memory stream of this PE's data
+     * @see PeImage#makeVirtualMemStream
+     * @see PeImage#importDescriptors
      */
-    public ParseResult<ArrayList<ImageImportDescriptor>> readImportDescriptors(LittleEndianReader r) {
+    public ParseResult<ArrayList<ImageImportDescriptor>> readImportDescriptors(CadesVirtualMemStream vmem) {
+        LittleEndianReader r = new LittleEndianReader(vmem);
         ImageDataDirectory imp = ntHeaders.getDataDirectory(ImageOptionalHeader.IMAGE_DIRECTORY_ENTRY_IMPORT);
 
         if (imp == null || imp.virtualAddress == 0)
@@ -144,20 +169,21 @@ public class ImagePeHeaders {
         return ParseResult.ok(importDescs);
     }
 
-    public ParseResult<ArrayList<CachedLibraryImports>> readImportDescEntries(
-            LittleEndianReader r,
+    public ParseResult<ArrayList<LibraryImports>> readImportDescEntries(
+            CadesVirtualMemStream vmem,
             Collection<ImageImportDescriptor> descList
     ) {
+        LittleEndianReader r = new LittleEndianReader(vmem);
         long baseVaddr = ntHeaders.optionalHeader.imageBase;
 
-        ArrayList<CachedLibraryImports> newImps = new ArrayList<>();
+        ArrayList<LibraryImports> newImps = new ArrayList<>();
 
         try {
             for (ImageImportDescriptor desc : descList) {
                 String name;
                 List<Long> rvaTable;
                 List<ImageImportByName> nameTable;
-                List<CachedImportEntry> entries;
+                List<ImportEntry> entries;
 
                 // Read library name
                 r.getStream().seek(desc.name + baseVaddr);
@@ -196,10 +222,10 @@ public class ImagePeHeaders {
                 entries = new ArrayList<>();
                 for (int i = 0; i < rvaTable.size(); ++i) {
                     ImageImportByName entry = nameTable.get(i);
-                    entries.add(new CachedImportEntry(entry.name, entry.ordinal, rvaTable.get(i)));
+                    entries.add(new ImportEntry(entry.name, entry.ordinal, rvaTable.get(i)));
                 }
 
-                newImps.add(new CachedLibraryImports(name, desc.timeDateStamp, desc.forwarderChain, entries));
+                newImps.add(new LibraryImports(name, desc.timeDateStamp, desc.forwarderChain, entries));
             }
         } catch (IOException e) {
             return ParseResult.err("IOException, cannot read ImageImportByName entry", e);
@@ -208,7 +234,8 @@ public class ImagePeHeaders {
         return ParseResult.ok(newImps);
     }
 
-    public ParseResult<ImageExportDirectory> readExportDirectory(LittleEndianReader r) {
+    public ParseResult<ImageExportDirectory> readExportDirectory(CadesVirtualMemStream vmem) {
+        LittleEndianReader r = new LittleEndianReader(vmem);
         long baseVaddr = ntHeaders.optionalHeader.imageBase;
         ImageDataDirectory exp = ntHeaders.getDataDirectory(ImageOptionalHeader.IMAGE_DIRECTORY_ENTRY_EXPORT);
 
@@ -224,12 +251,13 @@ public class ImagePeHeaders {
         return ImageExportDirectory.read(r);
     }
 
-    public ParseResult<CachedImageExports> readExportEntries(LittleEndianReader r, ImageExportDirectory expDir) {
+    public ParseResult<LibraryExport> readExportEntries(CadesVirtualMemStream vmem, ImageExportDirectory expDir) {
+        LittleEndianReader r = new LittleEndianReader(vmem);
         String name;
         long[] funcsTable;
         long[] namesTable;
         long[] ordsTable;
-        CachedExportEntry[] entries;
+        ExportEntry[] entries;
         long baseVaddr = ntHeaders.optionalHeader.imageBase;
 
         try {
@@ -245,7 +273,7 @@ public class ImagePeHeaders {
             r.getStream().seek(expDir.addressOfNameOrdinals + baseVaddr);
             ordsTable = r.readValues(16, (int) expDir.numberOfNames);
 
-            entries = new CachedExportEntry[namesTable.length];
+            entries = new ExportEntry[namesTable.length];
             for (int i = 0; i < (int) expDir.numberOfNames; ++i) {
                 int entryOrd;
                 long entryVa;
@@ -261,12 +289,12 @@ public class ImagePeHeaders {
                     return ParseResult.err("IndexOutOfBoundsException, invalid export ordinal to name or function table", e);
                 }
 
-                entries[i] = new CachedExportEntry(entryName, entryOrd, entryVa);
+                entries[i] = new ExportEntry(entryName, entryOrd, entryVa);
             }
         } catch (IOException e) {
             return ParseResult.err("IOException, cannot read export table(s)", e);
         }
 
-        return ParseResult.ok(new CachedImageExports(name, entries));
+        return ParseResult.ok(new LibraryExport(name, entries));
     }
 }

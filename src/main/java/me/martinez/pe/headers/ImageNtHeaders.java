@@ -1,7 +1,7 @@
-package me.martinez.pe;
+package me.martinez.pe.headers;
 
 import me.martinez.pe.io.LittleEndianReader;
-import me.martinez.pe.util.GenericError;
+import me.martinez.pe.util.ParseError;
 import me.martinez.pe.util.ParseResult;
 
 import java.io.IOException;
@@ -22,7 +22,7 @@ public class ImageNtHeaders {
         if (nt.signature != IMAGE_NT_SIGNATURE)
             return ParseResult.err("Invalid NT header signature");
 
-        GenericError err = ImageFileHeader.read(r).ifOk(hdr -> nt.fileHeader = hdr).getErrOrDefault(null);
+        ParseError err = ImageFileHeader.read(r).ifOk(hdr -> nt.fileHeader = hdr).getErrOrDefault(null);
         if (err != null)
             return ParseResult.err(err);
 

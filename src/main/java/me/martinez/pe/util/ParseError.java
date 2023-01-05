@@ -1,15 +1,18 @@
 package me.martinez.pe.util;
 
-public class GenericError {
+/**
+ * Store an error reason and optional exception
+ */
+public class ParseError {
     private final String reason;
     private final Exception exception;
 
-    public GenericError(String reason, Exception e) {
+    public ParseError(String reason, Exception e) {
         this.reason = reason;
         this.exception = e;
     }
 
-    public GenericError(String reason) {
+    public ParseError(String reason) {
         this(reason, null);
     }
 

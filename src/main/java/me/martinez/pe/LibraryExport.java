@@ -4,11 +4,11 @@ package me.martinez.pe;
  * Contains the name of a library and the details of each listed export.
  * This object is not a file structure but contains the information of multiple linked file structures.
  */
-public class CachedImageExports {
+public class LibraryExport {
     public final String name;
-    public final CachedExportEntry[] entries;
+    public final ExportEntry[] entries;
 
-    public CachedImageExports(String name, CachedExportEntry[] entries) {
+    public LibraryExport(String name, ExportEntry[] entries) {
         this.name = name;
         this.entries = entries;
     }

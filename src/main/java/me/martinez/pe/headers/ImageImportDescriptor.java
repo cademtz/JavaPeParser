@@ -1,4 +1,4 @@
-package me.martinez.pe;
+package me.martinez.pe.headers;
 
 import me.martinez.pe.io.LittleEndianReader;
 import me.martinez.pe.util.ParseResult;

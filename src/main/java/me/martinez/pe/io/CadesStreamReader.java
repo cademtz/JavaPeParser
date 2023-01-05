@@ -26,6 +26,10 @@ public abstract class CadesStreamReader {
         this.pos = pos;
     }
 
+    /**
+     * Offsets {@link #pos}
+     * @return Last value of {@link #pos}
+     */
     protected long incrementPos(long offset) {
         return (pos += offset) - offset;
     }

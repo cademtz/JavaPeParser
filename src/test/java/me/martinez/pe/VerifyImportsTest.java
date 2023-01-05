@@ -6,7 +6,7 @@ import com.eclipsesource.json.JsonObject;
 import com.eclipsesource.json.JsonValue;
 import me.martinez.pe.io.CadesFileStream;
 import me.martinez.pe.io.LittleEndianReader;
-import me.martinez.pe.util.GenericError;
+import me.martinez.pe.util.ParseError;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -49,10 +49,10 @@ public class VerifyImportsTest {
         CadesFileStream stream = new CadesFileStream(new File(TestSettings.basePath + filePath));
         LittleEndianReader reader = new LittleEndianReader(stream);
 
-        ImagePeHeaders pe = ImagePeHeaders.read(reader).ifErr(err -> {
+        PeImage pe = PeImage.read(reader).ifErr(err -> {
             System.out.println("Error: " + err);
         }).ifOk(val -> {
-            for (GenericError warning : val.warnings)
+            for (ParseError warning : val.warnings)
                 System.out.println("Warning: " + warning.toString());
         }).getOkOrDefault(null);
 
@@ -65,7 +65,7 @@ public class VerifyImportsTest {
         }
     }
 
-    private static void checkImports(JsonObject testData, ImagePeHeaders pe) throws Exception {
+    private static void checkImports(JsonObject testData, PeImage pe) throws Exception {
         JsonArray jsonImports = null;
         {
             JsonValue j = testData.get("imports");
@@ -74,7 +74,7 @@ public class VerifyImportsTest {
         }
 
         boolean testHasImports = jsonImports != null;
-        boolean hasImports = pe.cachedImps.isOk();
+        boolean hasImports = pe.imports.isOk();
 
         if (hasImports != (testHasImports))
             throw new Exception(String.format("Expected hasImports=%s, got %s", testHasImports, hasImports));
@@ -82,13 +82,13 @@ public class VerifyImportsTest {
         if (!hasImports)
             return; // No imports to check here!
 
-        ArrayList<CachedLibraryImports> cachedImps = pe.cachedImps.getOk();
+        ArrayList<LibraryImports> cachedImps = pe.imports.getOk();
 
         if (jsonImports.size() != cachedImps.size())
             throw new Exception(String.format("Expected imports.size=%s, got %s", jsonImports.size(), cachedImps.size()));
 
         for (int i = 0; i < cachedImps.size(); ++i) {
-            CachedLibraryImports lib = cachedImps.get(i);
+            LibraryImports lib = cachedImps.get(i);
             JsonObject json_lib = jsonImports.get(i).asObject();
             JsonArray json_entries = json_lib.get("entries").asArray();
 
@@ -98,7 +98,7 @@ public class VerifyImportsTest {
                 throw new Exception("Imported library has incorrect number of entries");
 
             for (int c = 0; c < lib.entries.size(); ++c) {
-                CachedImportEntry entry = lib.entries.get(c);
+                ImportEntry entry = lib.entries.get(c);
                 JsonObject json_entry = json_entries.get(c).asObject();
                 JsonValue json_name = json_entry.get("name");
                 JsonValue json_ordinal = json_entry.get("ordinal");
@@ -123,7 +123,7 @@ public class VerifyImportsTest {
         }
     }
 
-    private static void checkExports(JsonObject testData, ImagePeHeaders pe) throws Exception {
+    private static void checkExports(JsonObject testData, PeImage pe) throws Exception {
         JsonArray jsonExports = null;
         {
             JsonValue j = testData.get("exports");
@@ -132,7 +132,7 @@ public class VerifyImportsTest {
         }
 
         boolean testHasExports = jsonExports != null;
-        boolean hasExports = pe.cachedExps.isOk();
+        boolean hasExports = pe.exports.isOk();
 
         if (hasExports != testHasExports)
             throw new Exception(String.format("Expected hasExports=%s, got %s", testHasExports, hasExports));
@@ -140,13 +140,13 @@ public class VerifyImportsTest {
         if (!hasExports)
             return; // No exports to check here!
 
-        CachedImageExports exports = pe.cachedExps.getOk();
+        LibraryExport exports = pe.exports.getOk();
 
         if (jsonExports.size() != exports.entries.length)
             throw new Exception(String.format("Expected exports.size=%s, got %s", jsonExports.size(), exports.entries.length));
 
         for (int i = 0; i < exports.entries.length; ++i) {
-            CachedExportEntry entry = exports.entries[i];
+            ExportEntry entry = exports.entries[i];
             JsonObject json_entry = jsonExports.get(i).asObject();
 
             if (!entry.name.equals(json_entry.get("name").asString()))

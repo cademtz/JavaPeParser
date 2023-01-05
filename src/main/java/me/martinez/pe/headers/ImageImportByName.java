@@ -1,4 +1,4 @@
-package me.martinez.pe;
+package me.martinez.pe.headers;
 
 import me.martinez.pe.io.LittleEndianReader;
 import me.martinez.pe.util.ParseResult;
@@ -45,14 +45,6 @@ public class ImageImportByName {
 
     public static ParseResult<ImageImportByName> read(LittleEndianReader r, boolean is64bit) {
         try {
-            /*// Check if import is by ordinal
-            // FIXME: This can't be right. How is can pos be negative? This is required to set the ordinal flag.
-            long pos = r.getStream().getPos();
-            if ((pos & getOrdinalFlag(is64bit)) != 0) {
-                imp.ordinal = (int) (pos & 0xFFFF);
-            } else {
-                r.getStream().seek(pos); // Set position back and re-read as name
-            */
             int hint = r.readWord();
             String name = r.readNullTerminatedString(-1);
             return ParseResult.ok(new ImageImportByName(hint, name));

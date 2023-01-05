@@ -2,10 +2,14 @@ package me.martinez.pe;
 
 import com.eclipsesource.json.JsonArray;
 import com.eclipsesource.json.JsonObject;
+import me.martinez.pe.headers.ImageDataDirectory;
+import me.martinez.pe.headers.ImageExportDirectory;
+import me.martinez.pe.headers.ImageOptionalHeader;
 import me.martinez.pe.io.CadesFileStream;
+import me.martinez.pe.io.CadesStreamReader;
 import me.martinez.pe.io.LittleEndianReader;
-import me.martinez.pe.util.GenericError;
 import me.martinez.pe.util.HexOutput;
+import me.martinez.pe.util.ParseError;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -23,6 +27,10 @@ public class TestDataGenerator {
         }
     }*/
 
+    static String[] paths() {
+        return TestSettings.sampleBinaries;
+    }
+
     public static void main(String[] args) {
         for (String path : paths()) {
             try {
@@ -33,19 +41,49 @@ public class TestDataGenerator {
         }
     }
 
-    static String[] paths() {
-        return TestSettings.sampleBinaries;
+    public static void example(String[] args) {
+        CadesStreamReader stream;
+        try {
+            stream = new CadesFileStream(new File(TestSettings.basePath + "ctest.exe"));
+        } catch (IOException e) {
+            System.out.println(e);
+            return;
+        }
+
+        PeImage pe = PeImage.read(stream).ifErr(err -> {
+            System.out.println("Error: " + err);
+        }).ifOk(val -> {
+            for (ParseError warning : val.warnings)
+                System.out.println("Warning: " + warning);
+        }).getOkOrDefault(null);
+
+        if (pe != null) {
+            System.out.println("is64bit: " + pe.ntHeaders.is64bit());
+
+            pe.imports.ifOk(imports -> {
+                for (LibraryImports lib : imports) {
+                    System.out.printf("%s imports from %s:%n", lib.entries.size(), lib.name);
+                    for (ImportEntry entry : lib.entries)
+                        System.out.printf("\tname=%s, ordinal=%s%n", entry.name, entry.ordinal);
+                }
+            }).ifErr(err -> System.out.printf("No imports: %s%n", err.toString()));
+
+            pe.exports.ifOk(exports -> {
+                System.out.printf("This file exports under the library name \"%s\"%n", exports.name);
+                for (ExportEntry entry : exports.entries)
+                    System.out.printf("\tname=%s, ordinal=%s%n", entry.name, entry.ordinal);
+            }).ifErr(err -> System.out.printf("No exports: %s%n", err.toString()));
+        }
     }
 
     private static void run(String filePath) throws IOException {
         System.out.println("Parsing " + filePath);
 
         CadesFileStream stream = new CadesFileStream(new File(TestSettings.basePath + filePath));
-        LittleEndianReader reader = new LittleEndianReader(stream);
-        ImagePeHeaders pe = ImagePeHeaders.read(reader).ifErr(err -> {
+        PeImage pe = PeImage.read(new LittleEndianReader(stream)).ifErr(err -> {
             System.out.println("Error: " + err);
         }).ifOk(val -> {
-            for (GenericError warning : val.warnings)
+            for (ParseError warning : val.warnings)
                 System.out.println("Warning: " + warning);
         }).getOkOrDefault(null);
 
@@ -75,15 +113,15 @@ public class TestDataGenerator {
         }
     }
 
-    private static void appendImportData(JsonObject testData, ImagePeHeaders pe) {
-        if (pe.cachedImps.isErr())
+    private static void appendImportData(JsonObject testData, PeImage pe) {
+        if (pe.imports.isErr())
             return;
 
         JsonArray jsonImports = new JsonArray();
         testData.add("imports", jsonImports);
 
-        ArrayList<CachedLibraryImports> cachedImps = pe.cachedImps.getOk();
-        for (CachedLibraryImports lib : cachedImps) {
+        ArrayList<LibraryImports> cachedImps = pe.imports.getOk();
+        for (LibraryImports lib : cachedImps) {
             JsonObject jsonLib = new JsonObject();
             JsonArray json_entries = new JsonArray();
 
@@ -93,7 +131,7 @@ public class TestDataGenerator {
 
             System.out.println(lib.name);
 
-            for (CachedImportEntry entry : lib.entries) {
+            for (ImportEntry entry : lib.entries) {
                 JsonObject jsonEntry = new JsonObject();
 
                 jsonEntry.add("thunkAddress", entry.thunkAddress);
@@ -113,7 +151,7 @@ public class TestDataGenerator {
         }
     }
 
-    public static void appendExportData(JsonObject testData, ImagePeHeaders pe) {
+    public static void appendExportData(JsonObject testData, PeImage pe) {
         if (pe.exportDirectory.isErr())
             return;
 
@@ -123,10 +161,10 @@ public class TestDataGenerator {
         ImageExportDirectory expDir = pe.exportDirectory.getOk();
         System.out.println(expDir.numberOfNames + " exports");
 
-        if (pe.cachedExps.isOk()) {
-            CachedImageExports exports = pe.cachedExps.getOk();
+        if (pe.exports.isOk()) {
+            LibraryExport exports = pe.exports.getOk();
 
-            for (CachedExportEntry entry : exports.entries) {
+            for (ExportEntry entry : exports.entries) {
                 JsonObject jsonEntry = new JsonObject();
 
                 jsonEntry.add("name", entry.name);

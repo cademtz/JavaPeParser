@@ -4,7 +4,7 @@ package me.martinez.pe;
  * Contains the name of an import and either its ordinal, or its name, or both.
  * This object is not a file structure but contains the information of multiple linked file structures.
  */
-public class CachedImportEntry {
+public class ImportEntry {
     /**
      * Import by name. May be {@code null} if no name was used.
      */
@@ -20,7 +20,7 @@ public class CachedImportEntry {
      */
     public final long thunkAddress;
 
-    public CachedImportEntry(String name, Integer ordinal, long thunkAddress) {
+    public ImportEntry(String name, Integer ordinal, long thunkAddress) {
         this.name = name;
         this.ordinal = ordinal;
         this.thunkAddress = thunkAddress;
