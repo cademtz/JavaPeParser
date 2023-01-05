@@ -78,3 +78,7 @@ ArrayList<LibraryImports> imports = pe.imports.getOkOrDefault(null);
 if (imports != null)
     printImports(imports);
 ```
+
+## Commit reminders
+- Update version in `pom.xml`
+- Compile with `mvn package`
