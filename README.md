@@ -14,7 +14,7 @@ CadesStreamReader stream = new CadesBufferStream(peFileBytes);
 // Or, make your own stream by implementing CadesStreamReader
 ```
 
-Next, attempt to parse the PE headers _(and any print any errors or warnings)_.
+Next, attempt to parse the PE headers _(and print any errors or warnings)_.
 
 ```java
 // Print the error on failure
