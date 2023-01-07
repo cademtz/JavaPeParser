@@ -6,6 +6,7 @@ import me.martinez.pe.io.CadesVirtualMemStream;
 import me.martinez.pe.io.LittleEndianReader;
 import me.martinez.pe.util.ParseError;
 import me.martinez.pe.util.ParseResult;
+import me.martinez.pe.util.VirtualAddressException;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -133,6 +134,53 @@ public class PeImage {
      */
     public CadesVirtualMemStream makeVirtualMemStream(CadesStreamReader fdata) {
         return new CadesVirtualMemStream(this, fdata);
+    }
+
+    /**
+     * Find which section a virtual address is inside of
+     *
+     * @param virtualAddr Any virtual address
+     * @return Section information, or {@code null}
+     */
+    public ImageSectionHeader getSection(long virtualAddr) {
+        for (ParseResult<ImageSectionHeader> parsedSec : sectionHeaders) {
+            if (parsedSec.isErr())
+                continue;
+
+            ImageSectionHeader section = parsedSec.getOk();
+            long secAddr = ntHeaders.optionalHeader.imageBase + section.virtualAddress;
+            if (virtualAddr >= secAddr && virtualAddr < secAddr + section.getVirtualSize())
+                return section;
+        }
+        return null;
+    }
+
+    /**
+     * Find the file address of initial data for a virtual address.
+     * <br>
+     * Some sections do not use initial data and have
+     * For those sections, use {@link #getSection(long)}
+     *
+     * @param virtualAddr Any virtual address
+     * @return File address
+     * @see #getSection(long)
+     * @throws VirtualAddressException Address is not within a section using initialized memory from file
+     */
+    public long getFileAddress(long virtualAddr) throws VirtualAddressException {
+        ImageSectionHeader section = getSection(virtualAddr);
+        if (section == null)
+            throw new VirtualAddressException("Address is not inside a section", virtualAddr);
+
+        boolean isInitialized = (section.characteristics & ImageSectionHeader.IMAGE_SCN_CNT_UNINITIALIZED_DATA) == 0;
+        if (!isInitialized)
+            throw new VirtualAddressException("Address is inside a section with no file data (uninitialized section)", virtualAddr);
+
+        long secAddr = ntHeaders.optionalHeader.imageBase + section.virtualAddress;
+        long secOffset = virtualAddr - secAddr;
+        if (secOffset > section.sizeOfRawData)
+            throw new VirtualAddressException("Address is beyond the section's initialized file data", virtualAddr);
+
+        return section.pointerToRawData + secOffset;
     }
 
     /**
