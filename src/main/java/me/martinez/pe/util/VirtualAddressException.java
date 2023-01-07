@@ -1,7 +1,7 @@
 package me.martinez.pe.util;
 
 /**
- * Exception with a virtual address that be retrieved.
+ * Exception with a virtual address that can be retrieved.
  * Useful when a virtual address causes (or could cause) a violation.
  */
 public class VirtualAddressException extends Exception {
