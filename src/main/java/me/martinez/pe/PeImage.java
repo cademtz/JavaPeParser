@@ -158,13 +158,13 @@ public class PeImage {
     /**
      * Find the file address of initial data for a virtual address.
      * <br>
-     * Some sections do not use initial data and have
+     * Some sections only have partial initial data or none at all.
      * For those sections, use {@link #getSection(long)}
      *
      * @param virtualAddr Any virtual address
      * @return File address
+     * @throws VirtualAddressException Address is not within a section's initialized memory
      * @see #getSection(long)
-     * @throws VirtualAddressException Address is not within a section using initialized memory from file
      */
     public long getFileAddress(long virtualAddr) throws VirtualAddressException {
         ImageSectionHeader section = getSection(virtualAddr);
