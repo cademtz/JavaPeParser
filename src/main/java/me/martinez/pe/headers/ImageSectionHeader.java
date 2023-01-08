@@ -114,4 +114,8 @@ public class ImageSectionHeader {
     public long getVirtualSize() {
         return physicalAddr_vSize;
     }
+
+    public boolean hasCharacteristic(long characteristic) {
+        return (this.characteristics & characteristic) != 0;
+    }
 }
