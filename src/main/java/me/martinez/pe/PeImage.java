@@ -178,7 +178,7 @@ public class PeImage {
         long secAddr = ntHeaders.optionalHeader.imageBase + section.virtualAddress;
         long secOffset = virtualAddr - secAddr;
         if (secOffset > section.sizeOfRawData)
-            throw new VirtualAddressException("Address is beyond the section's initialized file data", virtualAddr);
+            throw new VirtualAddressException("Address is beyond the section's initialized data on file", virtualAddr);
 
         return section.pointerToRawData + secOffset;
     }
