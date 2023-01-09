@@ -171,7 +171,7 @@ public class PeImage {
         if (section == null)
             throw new VirtualAddressException("Address is not inside a section", virtualAddr);
 
-        boolean isInitialized = (section.characteristics & ImageSectionHeader.IMAGE_SCN_CNT_UNINITIALIZED_DATA) == 0;
+        boolean isInitialized = section.sizeOfRawData > 0;
         if (!isInitialized)
             throw new VirtualAddressException("Address is inside a section with no file data (uninitialized section)", virtualAddr);
 
