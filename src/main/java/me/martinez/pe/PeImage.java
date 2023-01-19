@@ -229,7 +229,7 @@ public class PeImage {
         try {
             for (ImageImportDescriptor desc : descList) {
                 String name;
-                List<Long> rvaTable;
+                List<Long> lookupTable;
                 List<ImageImportByName> nameTable;
                 List<ImportEntry> entries;
 
@@ -239,11 +239,11 @@ public class PeImage {
 
                 // Read null-terminated array of pointers (RVAs) to ImageImportByName
                 r.getStream().seek(desc.getOriginalFirstThunk() + baseVaddr);
-                rvaTable = r.readTerminatedValues(is64bit() ? 64 : 32, 0, -1);
+                lookupTable = r.readTerminatedValues(is64bit() ? 64 : 32, 0, -1);
 
                 // Read each ImageImportByName pointed to in the table
                 nameTable = new ArrayList<>();
-                for (Long rva : rvaTable) {
+                for (Long rva : lookupTable) {
                     // Check if rva should be interpreted as an ordinal
                     ParseResult<ImageImportByName> imp = ImageImportByName.read(rva, is64bit());
 
@@ -258,19 +258,17 @@ public class PeImage {
                     nameTable.add(imp.getOk());
                 }
 
-                // Read null-terminated array of pointers (RVAs) to destination address of import
-                r.getStream().seek(desc.firstThunk + baseVaddr);
-                rvaTable = r.readTerminatedValues(is64bit() ? 64 : 32, 0, -1);
-
-                if (rvaTable.size() != nameTable.size()) {
+                if (nameTable.size() != lookupTable.size())
                     return ParseResult.err("Import descriptor's name and address table sizes are mismatched");
-                }
+
+                long firstThunkAddress = baseVaddr + desc.firstThunk;
+                long thunkSize = is64bit() ? 8 : 4;
 
                 // Putting it all together
                 entries = new ArrayList<>();
-                for (int i = 0; i < rvaTable.size(); ++i) {
+                for (int i = 0; i < lookupTable.size(); ++i) {
                     ImageImportByName entry = nameTable.get(i);
-                    entries.add(new ImportEntry(entry.name, entry.ordinal, rvaTable.get(i)));
+                    entries.add(new ImportEntry(entry.name, entry.ordinal, firstThunkAddress + i * thunkSize));
                 }
 
                 newImps.add(new LibraryImports(name, desc.timeDateStamp, desc.forwarderChain, entries));

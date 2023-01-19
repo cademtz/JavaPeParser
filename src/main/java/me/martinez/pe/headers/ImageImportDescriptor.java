@@ -6,7 +6,11 @@ import me.martinez.pe.util.ParseResult;
 import java.io.IOException;
 
 public class ImageImportDescriptor {
-    public long chara_origFirstThunk; // union between Characteristics and OriginalFirstThunk
+    /**
+     * The RVA of the import lookup table. This table contains a name or ordinal for each import.
+     * (The name "Characteristics" is used in Winnt.h, but no longer describes this field.)
+     */
+    public long chara_origFirstThunk;
     /**
      * <ul>
      *     <li>0 if not bound</li>
