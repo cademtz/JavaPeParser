@@ -94,8 +94,12 @@ public class PeImage {
         CadesVirtualMemStream vmem = pe.makeVirtualMemStream(fdata.getStream());
 
         pe.sectionHeaders = new ArrayList<>();
-        for (int i = 0; i < pe.ntHeaders.fileHeader.numberOfSections; ++i)
-            pe.sectionHeaders.add(ImageSectionHeader.read(vmem));
+        for (int i = 0; i < pe.ntHeaders.fileHeader.numberOfSections; ++i) {
+            ParseResult<ImageSectionHeader> section = ImageSectionHeader.read(vmem);
+            if (section.isErr())
+                return ParseResult.err("Invalid section: " + section.getErr());
+            pe.sectionHeaders.add(section);
+        }
 
         // Try reading raw import descriptor headers
         pe.importDescriptors = pe.readImportDescriptors(vmem);
