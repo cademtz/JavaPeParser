@@ -1,6 +1,7 @@
 package me.martinez.pe.io;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -46,10 +47,9 @@ public abstract class EndianReader {
     }
 
     public String readString(int length) throws IOException {
-        StringBuilder str = new StringBuilder();
-        for (int i = 0; i < length; ++i)
-            str.append((char) stream.read());
-        return str.toString();
+        byte[] utf8 = new byte[length];
+        int bytesRead = stream.read(utf8);
+        return new String(utf8, 0, bytesRead, StandardCharsets.UTF_8);
     }
 
     /**

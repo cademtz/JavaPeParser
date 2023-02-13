@@ -25,8 +25,16 @@ public class CadesVirtualMemStream extends CadesStreamReader {
 
     @Override
     public int read() throws IOException {
+        // FIXME: Be careful to not read past the available segment
         incrementPos(1);
         return fdata.read() & 0xFF;
+    }
+    
+    @Override
+    public int read(byte[] buffer, int offset, int length) throws IOException {
+        int readLen = fdata.read(buffer, offset, length);
+        incrementPos(readLen);
+        return readLen;
     }
 
     @Override

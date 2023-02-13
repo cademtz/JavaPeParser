@@ -1,5 +1,6 @@
 package me.martinez.pe.io;
 
+import java.io.EOFException;
 import java.io.IOException;
 
 public class CadesBufferStream extends CadesStreamReader {
@@ -26,6 +27,18 @@ public class CadesBufferStream extends CadesStreamReader {
         if (getPos() < 0 || getPos() >= count)
             throw new IOException();
         return bytes[(int) (incrementPos(1) + offset)] & 0xFF;
+    }
+
+    @Override
+    public int read(byte[] buffer, int offset, int length) throws IOException {
+        int remaining = bytes.length - (int)getPos();
+        if (remaining <= 0)
+            throw new EOFException();
+            
+        int readLen = Integer.min(length, remaining);
+        System.arraycopy(bytes, (int)getPos(), buffer, offset, readLen);
+        incrementPos(readLen);
+        return readLen;
     }
 
     @Override
